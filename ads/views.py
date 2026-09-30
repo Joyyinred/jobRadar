@@ -91,7 +91,35 @@ def index(request):
     return render(request, "ads/index.html")
 
 
-@api_view(["POST"])
+@api_view(["GET", "POST"])
+def ads_collection(request):
+    """/api/ads/ — one URL, two actions. The HTTP method decides which."""
+    if request.method == "GET":
+        return list_ads(request)
+    return create_ad(request)
+
+
+def list_ads(request):
+    """GET /api/ads/ — a short summary of every ad, newest first."""
+    ads = JobAd.objects.all().order_by("-created_at")  # "-" = descending
+
+    summaries = []
+    for ad in ads:
+        # title/company are NOT columns — they're inside the result JSON, and
+        # result is None unless the ad completed. `or {}` avoids a crash on
+        # None, and .get() returns None instead of raising if a key is missing.
+        # (Awkward? Yes. That's Day 3.)
+        result = ad.result or {}
+        summaries.append({
+            "id": ad.id,
+            "status": ad.status,
+            "title": result.get("title"),
+            "company": result.get("company"),
+        })
+    # No pagination: 1,000 ads = 1,000 rows in one response. Fine for now.
+    return Response(summaries)
+
+
 def create_ad(request):
     """POST /api/ads/   body: {"raw_text": "..."}"""
     # No validation on purpose — whatever arrives, we use. (Day 8)

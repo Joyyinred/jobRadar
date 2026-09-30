@@ -24,6 +24,9 @@
   <div id="status"></div>
   <div id="result"></div>
 
+  <h2>Your ads</h2>
+  <ul id="ad-list"></ul>
+
   <script>
     const button = document.getElementById("submit");
     const statusEl = document.getElementById("status");
@@ -52,7 +55,39 @@
         resultEl.textContent = data.error;
       }
       button.disabled = false;
+      loadList();  // the new ad should now appear in the list
     });
+
+    // GET /api/ads/ — the list. One <li> per ad; click it to see the details.
+    async function loadList() {
+      const response = await fetch("/api/ads/", { headers: { Accept: "application/json" } });
+      const ads = await response.json();
+
+      const list = document.getElementById("ad-list");
+      list.innerHTML = "";
+      for (const ad of ads) {
+        const li = document.createElement("li");
+        li.style.cursor = "pointer";
+        li.textContent = `#${ad.id} ${ad.title ?? "(no title)"} — ${ad.company ?? "?"} [${ad.status}]`;
+        li.addEventListener("click", () => showAd(ad.id));
+        list.appendChild(li);
+      }
+    }
+
+    // GET /api/ads/<id>/ — the details endpoint you wrote.
+    async function showAd(id) {
+      const response = await fetch(`/api/ads/${id}/`, { headers: { Accept: "application/json" } });
+      const data = await response.json();
+      statusEl.textContent = `Ad #${data.id}: ${data.status}`;
+      resultEl.innerHTML = "";
+      if (data.status === "completed") {
+        showResult(data.result);
+      } else {
+        resultEl.textContent = data.error ?? "";
+      }
+    }
+
+    loadList();  // fill the list as soon as the page opens
 
     function showResult(result) {
       const table = document.createElement("table");

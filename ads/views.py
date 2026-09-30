@@ -4,7 +4,6 @@ JobRadar MVP — everything in one file on purpose.
 Flow: paste ad -> save raw -> call the LLM (blocking) -> save fields -> return JSON.
 
 What this deliberately does NOT do yet (each is a later day):
-  - one table only            (Day 3: split into proper tables)
   - no queue / worker         (Day 4-5: the request waits for the whole LLM call)
   - no polling                (Day 6)
   - no layering               (Day 7: Controller / Service / Repository)
@@ -21,7 +20,7 @@ from rest_framework import status as http_status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from .models import JobAd
+from .models import AdSkill, Company, JobAd, Skill
 
 # __name__ is "ads.views", so it inherits the "ads" logger from settings.LOGGING.
 logger = logging.getLogger(__name__)
@@ -37,11 +36,15 @@ with exactly these keys:
 {
   "title": string,                  // the job title as the ad states it
   "company": string,                // the hiring company
+  "city": string,                   // where the job is; "remote" if fully remote
   "seniority": "intern" | "junior" | "mid" | "senior" | "unspecified",
-  "required_skills": [string],      // technical skills the ad REQUIRES (not nice-to-have)
+  "required_skills": [string],      // technical skills the ad REQUIRES
+  "nice_to_have_skills": [string],  // skills listed as a plus / meriterande
   "swedish_requirement": "required" | "preferred" | "not_mentioned"
 }
 
+A skill goes in exactly one of the two lists, never both.
+Use short, common skill names ("Git", not "version control systems").
 If the ad does not say something, use "unspecified" / "not_mentioned" / [].
 Do not guess.
 """
@@ -86,6 +89,51 @@ def call_llm(raw_text):
     return json.loads(text)
 
 
+def save_parsed(ad, data):
+    """Split the LLM's one JSON object across the tables.
+
+    data looks like {"title": ..., "company": ..., "required_skills": [...], ...}
+    """
+    # Company: reuse the row if this exact name exists, otherwise create it.
+    # get_or_create returns (object, created?) — we only need the object.
+    company_name = (data.get("company") or "").strip()
+    if company_name and company_name != "unspecified":
+        ad.company, _ = Company.objects.get_or_create(name=company_name)
+
+    # Per-ad fields: plain columns on JobAd.
+    ad.title = data.get("title") or ""
+    ad.city = data.get("city") or ""
+    ad.seniority = data.get("seniority") or ""
+    ad.swedish_requirement = data.get("swedish_requirement") or ""
+    ad.save()
+
+    # Skills: one Skill row per name (shared by all ads), plus one AdSkill row
+    # per (this ad, that skill) saying how much the ad wants it.
+    for level, key in [("required", "required_skills"), ("nice_to_have", "nice_to_have_skills")]:
+        for name in data.get(key) or []:
+            skill, _ = Skill.objects.get_or_create(name=name.strip())
+            # get_or_create again: if the LLM lists a skill twice, the
+            # unique (ad, skill) constraint would otherwise reject the 2nd row.
+            AdSkill.objects.get_or_create(ad=ad, skill=skill, defaults={"level": level})
+
+
+def ad_result(ad):
+    """The reverse of save_parsed: gather the tables back into one dict.
+
+    Same shape the API returned on Day 2, so the frontend didn't change.
+    """
+    ad_skills = ad.ad_skills.select_related("skill")  # all AdSkill rows of this ad
+    return {
+        "title": ad.title,
+        "company": ad.company.name if ad.company else None,
+        "city": ad.city,
+        "seniority": ad.seniority,
+        "required_skills": [s.skill.name for s in ad_skills if s.level == "required"],
+        "nice_to_have_skills": [s.skill.name for s in ad_skills if s.level == "nice_to_have"],
+        "swedish_requirement": ad.swedish_requirement,
+    }
+
+
 def index(request):
     """Serve the one HTML page. The page talks to the API with fetch()."""
     return render(request, "ads/index.html")
@@ -101,20 +149,19 @@ def ads_collection(request):
 
 def list_ads(request):
     """GET /api/ads/ — a short summary of every ad, newest first."""
-    ads = JobAd.objects.all().order_by("-created_at")  # "-" = descending
+    # select_related("company") fetches each ad's company in the SAME query
+    # (a SQL JOIN). Without it, ad.company.name below would run one extra
+    # query per ad: 100 ads = 101 queries. That's called the "N+1 problem".
+    ads = JobAd.objects.select_related("company").order_by("-created_at")
 
     summaries = []
     for ad in ads:
-        # title/company are NOT columns — they're inside the result JSON, and
-        # result is None unless the ad completed. `or {}` avoids a crash on
-        # None, and .get() returns None instead of raising if a key is missing.
-        # (Awkward? Yes. That's Day 3.)
-        result = ad.result or {}
+        # Compare with Day 2: plain columns now, no digging inside JSON.
         summaries.append({
             "id": ad.id,
             "status": ad.status,
-            "title": result.get("title"),
-            "company": result.get("company"),
+            "title": ad.title or None,
+            "company": ad.company.name if ad.company else None,
         })
     # No pagination: 1,000 ads = 1,000 rows in one response. Fine for now.
     return Response(summaries)
@@ -136,7 +183,8 @@ def create_ad(request):
     # 3. The blocking call. The browser sits here until DeepSeek answers.
     try:
         logger.info("ad %s: calling LLM ... BLOCKING", ad.id)
-        ad.result = call_llm(raw_text)
+        data = call_llm(raw_text)
+        save_parsed(ad, data)
         ad.status = "completed"
         logger.info("ad %s: completed", ad.id)
     except Exception:
@@ -149,7 +197,7 @@ def create_ad(request):
     # 4. Return what the API design said: id, status, and result or error.
     body = {"id": ad.id, "status": ad.status}
     if ad.status == "completed":
-        body["result"] = ad.result
+        body["result"] = ad_result(ad)
     else:
         body["error"] = ad.error
     return Response(body, status=http_status.HTTP_201_CREATED)
@@ -173,7 +221,7 @@ def get_ad(request, ad_id):
     #    pending / processing -> only id + status, nothing else to show yet.
     body = {"id": ad.id, "status": ad.status}
     if ad.status == "completed":
-        body["result"] = ad.result
+        body["result"] = ad_result(ad)
     elif ad.status == "failed":
         body["error"] = ad.error
     return Response(body)  # 200 OK is the default

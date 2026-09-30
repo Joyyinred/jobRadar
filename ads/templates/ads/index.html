@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>JobRadar</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; }
+    textarea { width: 100%; height: 260px; font: inherit; }
+    button { margin-top: .5rem; padding: .5rem 1rem; font: inherit; }
+    #status { margin-top: 1rem; font-weight: bold; }
+    table { border-collapse: collapse; margin-top: 1rem; }
+    td { border: 1px solid #ccc; padding: .4rem .8rem; vertical-align: top; }
+    td:first-child { font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>JobRadar</h1>
+  <p>Paste one job ad (Swedish or English) and submit.</p>
+
+  <textarea id="raw_text" placeholder="Paste the job ad here..."></textarea>
+  <br>
+  <button id="submit">Parse ad</button>
+
+  <div id="status"></div>
+  <div id="result"></div>
+
+  <script>
+    const button = document.getElementById("submit");
+    const statusEl = document.getElementById("status");
+    const resultEl = document.getElementById("result");
+
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      resultEl.innerHTML = "";
+      // Synchronous backend: this line stays on screen for the whole LLM call.
+      statusEl.textContent = "Parsing... (the page waits here until the LLM is done)";
+
+      // POST /api/ads/ — the API we designed.
+      const response = await fetch("/api/ads/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ raw_text: document.getElementById("raw_text").value }),
+      });
+      const data = await response.json();
+
+      statusEl.textContent = `Ad #${data.id}: ${data.status}`;
+
+      // Only show fields when completed — that's the rule from the API design.
+      if (data.status === "completed") {
+        showResult(data.result);
+      } else {
+        resultEl.textContent = data.error;
+      }
+      button.disabled = false;
+    });
+
+    function showResult(result) {
+      const table = document.createElement("table");
+      for (const [key, value] of Object.entries(result)) {
+        const row = table.insertRow();
+        row.insertCell().textContent = key;
+        // textContent (not innerHTML) so text from the ad can't inject HTML.
+        row.insertCell().textContent = Array.isArray(value) ? value.join(", ") : value;
+      }
+      resultEl.appendChild(table);
+    }
+  </script>
+</body>
+</html>

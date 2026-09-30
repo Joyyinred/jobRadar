@@ -65,14 +65,22 @@ def call_llm(raw_text):
     )
     message = client.messages.create(
         model=MODEL,
-        # The limit covers thinking AND the answer. At 1024 a 2,400-char ad used
-        # it all on thinking and never wrote the JSON (stop_reason "max_tokens").
-        max_tokens=4096,
+        # No "thinking" for this job. Measured on a long ad: thinking on took
+        # 20s and ~4,800 tokens (so it overran a 4,096 limit and failed) and
+        # produced a worse skill list; thinking off took 1s and 144 tokens.
+        # Extraction is reading, not reasoning.
+        thinking={"type": "disabled"},
+        max_tokens=4096,  # the answer alone is a few hundred tokens
+        # temperature 0 = least random: the same ad gives the same answer.
+        # Without it, one ad parsed 7 times gave 6-11 skills, once none at all.
+        # This SDK version has no temperature argument, so it goes in the raw
+        # request body; DeepSeek still reads it.
+        extra_body={"temperature": 0},
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": raw_text}],
     )
-    # The reply is a list of blocks. This model sends a "thinking" block first,
-    # then the answer as a "text" block — take the text one.
+    # The reply is a list of blocks. With thinking on, a "thinking" block comes
+    # before the "text" answer; filtering by type works either way.
     texts = [block.text for block in message.content if block.type == "text"]
     if not texts:
         # Say why in the log, instead of a bare StopIteration.

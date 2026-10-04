@@ -51,6 +51,30 @@ Do not guess.
 """
 
 
+def mock_llm(raw_text):
+    """A fake LLM: returns a fixed answer in exactly the shape the real one does.
+
+    Tests the whole pipeline (queue -> worker -> database -> polling) without
+    paying for or waiting on DeepSeek. It does NOT test the prompt or how good
+    the extraction is — only the real model can tell you that.
+    """
+    # Put MOCK_FAIL anywhere in the ad to make the "LLM" fail — a free way to
+    # watch Celery's retries and the "failed" status.
+    if "MOCK_FAIL" in raw_text:
+        raise RuntimeError("mock LLM: simulated failure (ad contains MOCK_FAIL)")
+
+    logger.info("LLM_MODE=mock: returning a fixed answer, no API call")
+    return {
+        "title": "Mock Junior Backend Developer",
+        "company": "Mock Company AB",
+        "city": "Stockholm",
+        "seniority": "junior",
+        "required_skills": ["Python", "Django", "PostgreSQL"],
+        "nice_to_have_skills": ["Docker", "AWS"],
+        "swedish_requirement": "preferred",
+    }
+
+
 def call_llm(raw_text):
     """Send the ad to DeepSeek and return the parsed JSON as a dict.
 
@@ -63,6 +87,13 @@ def call_llm(raw_text):
     if fake_delay:
         logger.info("LLM_FAKE_DELAY: sleeping %.0fs to simulate a slow LLM", fake_delay)
         time.sleep(fake_delay)
+
+    # Day 6: LLM_MODE=mock in .env -> no API call at all (free, offline, same
+    # answer every time). Anything else, or unset -> the real DeepSeek call.
+    # Default is real on purpose: a forgotten setting in production must not
+    # silently return fake data.
+    if os.environ.get("LLM_MODE", "real") == "mock":
+        return mock_llm(raw_text)
 
     # DeepSeek exposes an Anthropic-compatible endpoint, so we use the anthropic
     # SDK and just point it at DeepSeek. Switching to Claude = remove base_url,

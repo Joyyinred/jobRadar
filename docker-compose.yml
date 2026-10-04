@@ -55,5 +55,29 @@ services:
       # Mount the source so edits reload without rebuilding the image.
       - .:/app
 
+  worker:
+    # Day 5: same image and code as web, different command. It never serves
+    # HTTP — it just takes ad ids off the Redis queue and parses them.
+    # --concurrency=4: up to 4 ads parsed at the same time.
+    # (The hand-written version was: python manage.py run_worker)
+    build: .
+    command: celery -A config worker --loglevel=info --concurrency=4
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: jobradar
+      POSTGRES_USER: jobradar
+      POSTGRES_PASSWORD: jobradar
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+
 volumes:
   pgdata:

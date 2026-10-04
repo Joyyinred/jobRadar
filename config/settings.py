@@ -132,3 +132,13 @@ LOGGING = {
 # ---------------------------------------------------------------------------
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 PARSE_QUEUE = "jobradar:parse_queue"  # the Redis list that holds ad ids
+
+# ---------------------------------------------------------------------------
+# Celery (Day 5): the worker framework, using Redis as its queue ("broker").
+# ---------------------------------------------------------------------------
+CELERY_BROKER_URL = REDIS_URL
+# Remove a task from the queue only AFTER it finishes, not when it's picked up.
+# If the worker dies mid-task, Redis hands the task out again (after a timeout)
+# — the "crash = lost job" problem of the hand-written worker.
+CELERY_TASK_ACKS_LATE = True
+CELERY_TASK_REJECT_ON_WORKER_LOST = True

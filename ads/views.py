@@ -1,12 +1,10 @@
 """
 JobRadar MVP — everything in one file on purpose.
 
-Flow (Day 4): paste ad -> save raw (pending) -> put its id on the Redis queue
-             -> return right away.
+Flow: paste ad -> save raw (pending) -> hand its id to Celery -> return right away.
+      A Celery worker (ads/tasks.py) calls the LLM and saves the result later.
 
 What this deliberately does NOT do yet (each is a later day):
-  - no worker                 (Day 5: nobody takes ids off the queue yet, so
-                               every new ad stays "pending" forever)
   - no polling                (Day 6)
   - no layering               (Day 7: Controller / Service / Repository)
   - no validation, no dedup,  (Day 8)
@@ -18,17 +16,12 @@ import os
 import time
 
 import anthropic
-import redis
-from django.conf import settings
 from django.shortcuts import render
 from rest_framework import status as http_status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from .models import AdSkill, Company, JobAd, Skill
-
-# One connection pool for the whole process, reused by every request.
-queue = redis.Redis.from_url(settings.REDIS_URL)
 
 # __name__ is "ads.views", so it inherits the "ads" logger from settings.LOGGING.
 logger = logging.getLogger(__name__)
@@ -199,14 +192,16 @@ def create_ad(request):
     ad = JobAd.objects.create(raw_text=raw_text, status="pending")
     logger.info("ad %s saved (%d chars)", ad.id, len(raw_text))  # ids only, never ad text
 
-    # 2. Put ONLY the id on the queue — the ad itself is already in the database.
-    #    LPUSH adds to the left end of a Redis list; whoever takes jobs later
-    #    pops from the right end, so the oldest ad comes out first (FIFO).
-    queue.lpush(settings.PARSE_QUEUE, ad.id)
+    # 2. Hand ONLY the id to Celery — the ad itself is already in the database.
+    #    .delay() doesn't run the task here: it puts a message on the Redis
+    #    queue and returns at once. A worker process picks it up.
+    #    (Imported here, not at the top: tasks.py imports from this file, and
+    #    two files importing each other at the top fail. Day 7 untangles this.)
+    from .tasks import parse_ad
+    parse_ad.delay(ad.id)
     logger.info("ad %s queued", ad.id)
 
-    # 3. Return immediately. No LLM call here any more: call_llm() and
-    #    save_parsed() above are untouched, waiting for tomorrow's worker.
+    # 3. Return immediately. The LLM call happens in the worker.
     #    202 Accepted = "got it, not done yet" (201 Created meant "done").
     return Response({"id": ad.id, "status": ad.status}, status=http_status.HTTP_202_ACCEPTED)
 

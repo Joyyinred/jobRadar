@@ -45,12 +45,49 @@
       });
       const data = await response.json();
 
-      // Day 4: the backend only says "received" (202). Parsing happens later —
-      // or, until there's a worker (Day 5), never.
+      // The backend only says "received" (202). The worker parses it later.
       statusEl.textContent = `Ad #${data.id}: ${data.status} — received, parsing in the background`;
       button.disabled = false;
       loadList();  // the new ad should now appear in the list
+
+      pollUntilDone(data.id);  // Day 6: keep asking until it's done
     });
+
+    // ---- Day 6: polling ----------------------------------------------------
+    // The backend can't call the browser ("you're done!"); HTTP only lets the
+    // browser ask. So the browser asks every 3 seconds: "done yet?"
+    const POLL_INTERVAL_MS = 3000;
+    const MAX_POLLS = 40;  // 40 x 3s = 2 minutes. A dead worker must not mean polling forever.
+
+    let pollingId = null;  // which ad we're currently polling (null = none)
+
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    async function pollUntilDone(id) {
+      pollingId = id;
+      for (let attempt = 1; attempt <= MAX_POLLS; attempt++) {
+        await sleep(POLL_INTERVAL_MS);
+
+        // The user submitted another ad or clicked one in the list meanwhile:
+        // stop, so this loop doesn't overwrite what they're looking at now.
+        if (pollingId !== id) return;
+
+        // Same endpoint as the details view: GET /api/ads/<id>/
+        const response = await fetch(`/api/ads/${id}/`, { headers: { Accept: "application/json" } });
+        const data = await response.json();
+
+        if (data.status === "completed" || data.status === "failed") {
+          pollingId = null;
+          render(data);  // completed -> the fields; failed -> the error
+          loadList();    // the list shows the new title and status too
+          return;
+        }
+        // pending / processing: say so, and go round again.
+        statusEl.textContent = `Ad #${id}: ${data.status} (checked ${attempt}x, every ${POLL_INTERVAL_MS / 1000}s)`;
+      }
+      pollingId = null;
+      statusEl.textContent = `Ad #${id}: still not done after 2 minutes. Refresh later to check.`;
+    }
 
     // GET /api/ads/ — the list. One <li> per ad; click it to see the details.
     async function loadList() {
@@ -70,8 +107,18 @@
 
     // GET /api/ads/<id>/ — the details endpoint you wrote.
     async function showAd(id) {
+      pollingId = null;  // the user is looking at something else now; stop polling
       const response = await fetch(`/api/ads/${id}/`, { headers: { Accept: "application/json" } });
       const data = await response.json();
+      render(data);
+      // Opened an ad that isn't finished yet? Keep watching it too.
+      if (data.status === "pending" || data.status === "processing") {
+        pollUntilDone(id);
+      }
+    }
+
+    // Draw one ad's status and result (or error). Used by showAd and polling.
+    function render(data) {
       statusEl.textContent = `Ad #${data.id}: ${data.status}`;
       resultEl.innerHTML = "";
       if (data.status === "completed") {

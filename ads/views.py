@@ -1,10 +1,12 @@
 """
 JobRadar MVP — everything in one file on purpose.
 
-Flow: paste ad -> save raw -> call the LLM (blocking) -> save fields -> return JSON.
+Flow (Day 4): paste ad -> save raw (pending) -> put its id on the Redis queue
+             -> return right away.
 
 What this deliberately does NOT do yet (each is a later day):
-  - no queue / worker         (Day 4-5: the request waits for the whole LLM call)
+  - no worker                 (Day 5: nobody takes ids off the queue yet, so
+                               every new ad stays "pending" forever)
   - no polling                (Day 6)
   - no layering               (Day 7: Controller / Service / Repository)
   - no validation, no dedup,  (Day 8)
@@ -13,14 +15,20 @@ What this deliberately does NOT do yet (each is a later day):
 import json
 import logging
 import os
+import time
 
 import anthropic
+import redis
+from django.conf import settings
 from django.shortcuts import render
 from rest_framework import status as http_status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from .models import AdSkill, Company, JobAd, Skill
+
+# One connection pool for the whole process, reused by every request.
+queue = redis.Redis.from_url(settings.REDIS_URL)
 
 # __name__ is "ads.views", so it inherits the "ads" logger from settings.LOGGING.
 logger = logging.getLogger(__name__)
@@ -56,6 +64,13 @@ def call_llm(raw_text):
     Raises on any failure (network, bad key, non-JSON answer) — the caller
     decides what to do with that.
     """
+    # Day 4 experiment: pretend DeepSeek is having a slow day.
+    # Set LLM_FAKE_DELAY=15 in .env to add 15 seconds to every call. Unset = 0.
+    fake_delay = float(os.environ.get("LLM_FAKE_DELAY", "0"))
+    if fake_delay:
+        logger.info("LLM_FAKE_DELAY: sleeping %.0fs to simulate a slow LLM", fake_delay)
+        time.sleep(fake_delay)
+
     # DeepSeek exposes an Anthropic-compatible endpoint, so we use the anthropic
     # SDK and just point it at DeepSeek. Switching to Claude = remove base_url,
     # use ANTHROPIC_API_KEY, and change MODEL.
@@ -180,35 +195,20 @@ def create_ad(request):
     # No validation on purpose — whatever arrives, we use. (Day 8)
     raw_text = request.data.get("raw_text", "")
 
-    # 1. Save the raw ad first, so it exists even if the LLM call fails.
+    # 1. Save the raw ad, status pending. The database is the source of truth.
     ad = JobAd.objects.create(raw_text=raw_text, status="pending")
     logger.info("ad %s saved (%d chars)", ad.id, len(raw_text))  # ids only, never ad text
 
-    # 2. Mark it processing.
-    ad.status = "processing"
-    ad.save()
+    # 2. Put ONLY the id on the queue — the ad itself is already in the database.
+    #    LPUSH adds to the left end of a Redis list; whoever takes jobs later
+    #    pops from the right end, so the oldest ad comes out first (FIFO).
+    queue.lpush(settings.PARSE_QUEUE, ad.id)
+    logger.info("ad %s queued", ad.id)
 
-    # 3. The blocking call. The browser sits here until DeepSeek answers.
-    try:
-        logger.info("ad %s: calling LLM ... BLOCKING", ad.id)
-        data = call_llm(raw_text)
-        save_parsed(ad, data)
-        ad.status = "completed"
-        logger.info("ad %s: completed", ad.id)
-    except Exception:
-        # Full details go to the log for you; the user only gets a safe message.
-        logger.exception("ad %s: LLM call failed", ad.id)
-        ad.status = "failed"
-        ad.error = "Could not parse this ad. Please try again."
-    ad.save()
-
-    # 4. Return what the API design said: id, status, and result or error.
-    body = {"id": ad.id, "status": ad.status}
-    if ad.status == "completed":
-        body["result"] = ad_result(ad)
-    else:
-        body["error"] = ad.error
-    return Response(body, status=http_status.HTTP_201_CREATED)
+    # 3. Return immediately. No LLM call here any more: call_llm() and
+    #    save_parsed() above are untouched, waiting for tomorrow's worker.
+    #    202 Accepted = "got it, not done yet" (201 Created meant "done").
+    return Response({"id": ad.id, "status": ad.status}, status=http_status.HTTP_202_ACCEPTED)
 
 
 @api_view(["GET"])  # only GET is allowed here; a POST to this URL gets 405

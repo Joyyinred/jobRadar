@@ -18,6 +18,18 @@ services:
       timeout: 3s
       retries: 10
 
+  redis:
+    # Day 4: the message queue. Just a box that holds ad ids until someone
+    # takes them. It does no work by itself.
+    image: redis:7
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
   web:
     build: .
     ports:
@@ -31,9 +43,13 @@ services:
       POSTGRES_DB: jobradar
       POSTGRES_USER: jobradar
       POSTGRES_PASSWORD: jobradar
+      # Inside the compose network Redis is reachable by service name too.
+      REDIS_URL: redis://redis:6379/0
     depends_on:
       db:
         # Wait until Postgres accepts connections, not just until it exists.
+        condition: service_healthy
+      redis:
         condition: service_healthy
     volumes:
       # Mount the source so edits reload without rebuilding the image.

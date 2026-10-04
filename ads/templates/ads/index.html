@@ -35,8 +35,7 @@
     button.addEventListener("click", async () => {
       button.disabled = true;
       resultEl.innerHTML = "";
-      // Synchronous backend: this line stays on screen for the whole LLM call.
-      statusEl.textContent = "Parsing... (the page waits here until the LLM is done)";
+      statusEl.textContent = "Submitting...";
 
       // POST /api/ads/ — the API we designed.
       const response = await fetch("/api/ads/", {
@@ -46,14 +45,9 @@
       });
       const data = await response.json();
 
-      statusEl.textContent = `Ad #${data.id}: ${data.status}`;
-
-      // Only show fields when completed — that's the rule from the API design.
-      if (data.status === "completed") {
-        showResult(data.result);
-      } else {
-        resultEl.textContent = data.error;
-      }
+      // Day 4: the backend only says "received" (202). Parsing happens later —
+      // or, until there's a worker (Day 5), never.
+      statusEl.textContent = `Ad #${data.id}: ${data.status} — received, parsing in the background`;
       button.disabled = false;
       loadList();  // the new ad should now appear in the list
     });

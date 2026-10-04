@@ -123,3 +123,12 @@ LOGGING = {
         },
     },
 }
+
+# ---------------------------------------------------------------------------
+# Redis (Day 4: the parse queue)
+#
+# "redis" inside docker compose (set in docker-compose.yml), "localhost" when
+# running Django from the .venv for debugging.
+# ---------------------------------------------------------------------------
+REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+PARSE_QUEUE = "jobradar:parse_queue"  # the Redis list that holds ad ids

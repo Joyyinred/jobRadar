@@ -1,0 +1,74 @@
+# CI: run the test suite on every pull request (and on every push to main).
+#
+# GitHub reads every .yml file in .github/workflows/ automatically — nothing
+# else to register. Results show up on the PR and in the repo's "Actions" tab.
+#
+# To BLOCK merging when this fails, a branch protection rule is also needed
+# (repo Settings -> Branches); see the job name note below.
+
+name: Tests
+
+on:
+  pull_request:          # every PR, whatever branch it targets
+  push:
+    branches: [main]     # and after merging, so main itself stays checked
+
+jobs:
+  tests:
+    # This job name ("tests") is what the branch protection rule selects as a
+    # required check. Renaming it means updating the rule too.
+    name: tests
+    runs-on: ubuntu-latest
+
+    # A PostgreSQL container next to the job — the same postgres:16 image as
+    # docker-compose.yml. GitHub starts it, waits for the health check, and
+    # throws it away when the job ends.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: jobradar
+          POSTGRES_USER: jobradar
+          POSTGRES_PASSWORD: jobradar
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U jobradar"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 10
+
+    # Read by config/settings.py. Tests never call DeepSeek (conftest.py forces
+    # the mock) and never need Redis (Celery runs eagerly), so no secrets.
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: jobradar
+      POSTGRES_USER: jobradar
+      POSTGRES_PASSWORD: jobradar
+      LLM_MODE: mock
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12 (same as the Dockerfile)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip    # reuse downloaded packages between runs while requirements.txt is unchanged
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check no migration is missing
+        # Fails if models.py was changed but `makemigrations` was never run.
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Run migrations
+        run: python manage.py migrate
+
+      - name: Run the tests
+        # pytest-django builds its own test_jobradar database from the
+        # migrations, so this also proves the migrations work from scratch.
+        run: pytest

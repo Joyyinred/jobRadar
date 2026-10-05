@@ -5,9 +5,8 @@ The HTTP front desk. Each view only:
   3. picks the status code and returns the response (through a serializer).
 
 No LLM, no queue, no database queries in here — see services.py and llm.py.
-
-Still deliberately missing (Day 8): input validation, duplicate detection,
-one error format for everything, tests.
+No error responses either: problems are raised (in serializers or services)
+and turned into one JSON format by exceptions.exception_handler.
 """
 from django.shortcuts import render
 from rest_framework import status as http_status
@@ -15,7 +14,6 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from . import services
-from .models import JobAd  # only for its DoesNotExist exception
 from .serializers import AdDetailSerializer, AdSummarySerializer, CreateAdSerializer
 
 
@@ -39,58 +37,33 @@ def list_ads(request):
 
 
 def create_ad(request):
-    """POST /api/ads/   body: {"raw_text": "..."}"""
+    """POST /api/ads/   body: {"raw_text": "...", "source_url": "...", "confirm": false}"""
     serializer = CreateAdSerializer(data=request.data)
-    # Invalid input -> DRF answers 400 by itself, in ITS format: {"raw_text": ["..."]}
-    serializer.is_valid(raise_exception=True)
+    serializer.is_valid(raise_exception=True)  # invalid -> 400, via the handler
     data = serializer.validated_data
 
-    result = services.submit_ad(data["raw_text"], data.get("source_url"), data["confirm"])
+    # May raise WarningException (409, via the handler) — nothing to do here.
+    ad, created = services.submit_ad(data["raw_text"], data.get("source_url"), data["confirm"])
 
-    # Day 8 Part 1: one if/else branch per outcome, each inventing its own
-    # response shape. Part 2 replaces this with one error format.
-    if result["outcome"] == "duplicate":
-        # 200, not 202: nothing new was created. The existing ad, plus a note.
-        body = AdDetailSerializer(result["ad"]).data
+    body = AdDetailSerializer(ad).data
+    if not created:
+        # Exact duplicate: the ad we already have. 200 = "here it is";
+        # 202 would mean "new work started", and none did.
         body["duplicate"] = True
-        body["message"] = f"Already submitted as ad #{result['ad'].id} ({result['reason']})"
         return Response(body, status=http_status.HTTP_200_OK)
-
-    if result["outcome"] == "warning":
-        # Nothing saved. Send it again with "confirm": true to go ahead.
-        return Response(
-            {"warning": result["message"], "needs_confirmation": True},
-            status=http_status.HTTP_200_OK,
-        )
-
     # 202 Accepted = "got it, not done yet". The LLM call happens in the worker.
-    return Response(AdDetailSerializer(result["ad"]).data, status=http_status.HTTP_202_ACCEPTED)
+    return Response(body, status=http_status.HTTP_202_ACCEPTED)
 
 
 @api_view(["GET"])  # only GET is allowed here; a POST to this URL gets 405
 def get_ad(request, ad_id):
     """GET /api/ads/<ad_id>/"""
-    try:
-        ad = services.get_ad(ad_id)
-    except JobAd.DoesNotExist:
-        return Response({"error": f"Ad {ad_id} not found"}, status=http_status.HTTP_404_NOT_FOUND)
+    ad = services.get_ad(ad_id)  # missing -> NotFoundError -> 404, via the handler
     return Response(AdDetailSerializer(ad).data)  # 200 OK is the default
 
 
 @api_view(["POST"])  # POST, not GET: it changes state (failed -> pending) and queues work
 def retry_ad(request, ad_id):
     """POST /api/ads/<ad_id>/retry/ — re-queue an ad whose parse failed."""
-    ad = services.retry_ad(ad_id)
-    if ad is not None:
-        return Response(AdDetailSerializer(ad).data, status=http_status.HTTP_202_ACCEPTED)
-
-    # Not re-queued: either the ad doesn't exist (404), or it isn't "failed" (409).
-    try:
-        current = services.get_ad(ad_id)
-    except JobAd.DoesNotExist:
-        return Response({"error": f"Ad {ad_id} not found"}, status=http_status.HTTP_404_NOT_FOUND)
-    # 409 Conflict: the request clashes with the ad's current state.
-    return Response(
-        {"error": f"Ad {ad_id} is {current.status}; only failed ads can be retried"},
-        status=http_status.HTTP_409_CONFLICT,
-    )
+    ad = services.retry_ad(ad_id)  # missing -> 404, not failed -> 409, via the handler
+    return Response(AdDetailSerializer(ad).data, status=http_status.HTTP_202_ACCEPTED)

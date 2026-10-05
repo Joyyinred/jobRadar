@@ -80,6 +80,9 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.AllowAny"],
     "UNAUTHENTICATED_USER": None,
+    # Day 8: every error, ours or DRF's, leaves through this one function in
+    # one JSON shape: {"type", "code", "message", "detail"}.
+    "EXCEPTION_HANDLER": "ads.exceptions.exception_handler",
 }
 
 # ---------------------------------------------------------------------------

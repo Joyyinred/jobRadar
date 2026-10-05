@@ -54,41 +54,41 @@
       const data = await response.json();
       button.disabled = false;
 
-      // Day 8 Part 1: the backend answers in four different shapes, so the
-      // page needs four different branches to read them. (Part 2 fixes this.)
-
-      // 1) 400 — DRF's validation format: {"raw_text": ["msg"], "source_url": ["msg"]}
-      if (response.status === 400) {
-        statusEl.textContent = "Please fix:";
-        resultEl.textContent = Object.entries(data)
-          .map(([field, messages]) => `${field}: ${messages.join(" ")}`)
-          .join(" | ");
+      // Day 8 Part 2: every error has the same shape {type, code, message, detail},
+      // so ONE branch handles all of them.
+      if (!response.ok) {
+        showError(data, () => submitAd(true));
         return;
       }
 
-      // 2) 200 + "warning" — nothing saved; offer a confirm button.
-      if (data.warning) {
-        statusEl.textContent = "Warning:";
-        resultEl.textContent = data.warning + " ";
-        const confirmButton = document.createElement("button");
-        confirmButton.textContent = "Parse anyway";
-        confirmButton.addEventListener("click", () => submitAd(true));
-        resultEl.appendChild(confirmButton);
-        return;
-      }
-
-      // 3) 200 + "duplicate" — the ad we already have.
+      // 200 + duplicate — the ad we already have.
       if (data.duplicate) {
         render(data);
-        statusEl.textContent = data.message;
+        statusEl.textContent = `Already submitted as ad #${data.id} (${data.status})`;
         if (data.status === "pending" || data.status === "processing") pollUntilDone(data.id);
         return;
       }
 
-      // 4) 202 — new ad, queued. The worker parses it later.
+      // 202 — new ad, queued. The worker parses it later.
       statusEl.textContent = `Ad #${data.id}: ${data.status} — received, parsing in the background`;
       loadList();  // the new ad should now appear in the list
       pollUntilDone(data.id);  // Day 6: keep asking until it's done
+    }
+
+    // ---- Day 8: the one error handler --------------------------------------
+    // Works for every API error, because the backend always sends
+    // {type, code, message, detail}. `type` decides what the user can do next.
+    function showError(error, onConfirm) {
+      const titles = { validation: "Please fix:", not_found: "Not found:", block: "Not allowed:", warning: "Warning:" };
+      statusEl.textContent = titles[error.type] ?? "Error:";
+      resultEl.textContent = error.message + " ";
+      // A warning can be overridden: offer to send the same request with confirm.
+      if (error.type === "warning" && onConfirm) {
+        const confirmButton = document.createElement("button");
+        confirmButton.textContent = "Continue anyway";
+        confirmButton.addEventListener("click", onConfirm);
+        resultEl.appendChild(confirmButton);
+      }
     }
 
     // ---- Day 6: polling ----------------------------------------------------
@@ -180,9 +180,8 @@
         headers: { Accept: "application/json" },
       });
       const data = await response.json();
-      if (response.status !== 202) {
-        // 409 (not failed any more) or 404: just show the server's message.
-        resultEl.textContent = data.error;
+      if (!response.ok) {
+        showError(data);  // 409 (not failed any more) or 404 — same handler as everything else
         return;
       }
       resultEl.innerHTML = "";

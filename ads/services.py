@@ -14,6 +14,7 @@ import re
 
 from django.db import IntegrityError, transaction
 
+from .exceptions import BlockError, NotFoundError, WarningException
 from .llm import call_llm
 from .models import AdSkill, Company, JobAd, Skill
 
@@ -33,8 +34,11 @@ def list_ads():
 
 
 def get_ad(ad_id):
-    """One ad. Raises JobAd.DoesNotExist if there is no such id."""
-    return JobAd.objects.get(id=ad_id)
+    """One ad. Raises NotFoundError (-> 404) if there is no such id."""
+    try:
+        return JobAd.objects.get(id=ad_id)
+    except JobAd.DoesNotExist:
+        raise NotFoundError("AD_NOT_FOUND", f"Ad {ad_id} not found", {"id": ad_id})
 
 
 # --- Submitting and retrying (web side) --------------------------------------
@@ -56,11 +60,11 @@ def content_hash_of(raw_text):
 def submit_ad(raw_text, source_url=None, confirm=False):
     """Save a new ad as pending and queue it for parsing.
 
-    Day 8 Part 1: every outcome comes back in its own ad-hoc shape, on purpose.
-    Returns one of:
-      {"outcome": "duplicate", "ad": <existing JobAd>, "reason": "..."}
-      {"outcome": "warning",   "message": "..."}          (nothing saved)
-      {"outcome": "created",   "ad": <new JobAd>}
+    Returns (ad, created):
+      (new JobAd, True)       — saved and queued
+      (existing JobAd, False) — exact duplicate; the ad we already have.
+                                Not an error: the ad IS in the system (idempotent).
+    Raises WarningException if the user must confirm first (nothing saved).
     """
     content_hash = content_hash_of(raw_text)
 
@@ -69,21 +73,23 @@ def submit_ad(raw_text, source_url=None, confirm=False):
     existing = JobAd.objects.filter(content_hash=content_hash).first()
     if existing:
         logger.info("ad %s: same content submitted again", existing.id)
-        return {"outcome": "duplicate", "ad": existing, "reason": "same_content"}
+        return existing, False
 
     # Exact duplicate, same URL -> same.
     if source_url:
         existing = JobAd.objects.filter(source_url=source_url).first()
         if existing:
             logger.info("ad %s: same source_url submitted again", existing.id)
-            return {"outcome": "duplicate", "ad": existing, "reason": "same_url"}
+            return existing, False
 
     # Warning: allowed, but only after the user confirms.
-    if len(normalise(raw_text)) < SHORT_AD_CHARS and not confirm:
-        return {
-            "outcome": "warning",
-            "message": f"This is under {SHORT_AD_CHARS} characters — it may not be a whole ad. Parse it anyway?",
-        }
+    length = len(normalise(raw_text))
+    if length < SHORT_AD_CHARS and not confirm:
+        raise WarningException(
+            "AD_TOO_SHORT",
+            f"This is under {SHORT_AD_CHARS} characters — it may not be a whole ad. Parse it anyway?",
+            {"chars": length, "min_chars": SHORT_AD_CHARS},
+        )
 
     # 1. Save the raw ad, status pending. The database is the source of truth.
     try:
@@ -102,20 +108,20 @@ def submit_ad(raw_text, source_url=None, confirm=False):
         if existing is None:
             raise  # some other constraint failed — not a duplicate, don't hide it
         logger.info("ad %s: duplicate caught by the database constraint", existing.id)
-        return {"outcome": "duplicate", "ad": existing, "reason": "same_content"}
+        return existing, False
     logger.info("ad %s saved (%d chars)", ad.id, len(raw_text))  # ids only, never ad text
 
     # 2. Hand ONLY the id to the queue — the ad itself is already in the database.
     enqueue_parse(ad.id)
     logger.info("ad %s queued", ad.id)
-    return {"outcome": "created", "ad": ad}
+    return ad, True
 
 
 def retry_ad(ad_id):
     """Re-queue an ad whose parse failed.
 
-    Returns the JobAd (now pending) if it was re-queued, or None if it wasn't
-    "failed" or doesn't exist — the caller works out which.
+    Returns the JobAd (now pending). Raises NotFoundError (404) or
+    BlockError (409) if it can't be retried.
     """
     # Check and change in ONE database step. Only a row that is still "failed"
     # gets updated; .update() returns how many rows it changed (0 or 1).
@@ -123,7 +129,12 @@ def retry_ad(ad_id):
     # already "pending", changes 0 rows. The ad is queued once, not twice.
     updated = JobAd.objects.filter(id=ad_id, status="failed").update(status="pending", error="")
     if not updated:
-        return None
+        current = get_ad(ad_id)  # raises NotFoundError if it doesn't exist
+        raise BlockError(
+            "AD_NOT_RETRYABLE",
+            f"Ad {ad_id} is {current.status}; only failed ads can be retried",
+            {"id": ad_id, "status": current.status},
+        )
 
     # Read it BEFORE queueing: once queued, a worker may flip it to
     # "processing" at any moment.

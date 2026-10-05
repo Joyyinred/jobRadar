@@ -156,6 +156,9 @@ def save_parsed(ad, data):
 
     # Skills: one Skill row per name (shared by all ads), plus one AdSkill row
     # per (this ad, that skill) saying how much the ad wants it.
+    # Start clean: a retry (or a half-finished earlier attempt) must not mix
+    # old skill links with new ones. The Skill rows themselves stay.
+    ad.ad_skills.all().delete()
     for level, key in [("required", "required_skills"), ("nice_to_have", "nice_to_have_skills")]:
         for name in data.get(key) or []:
             skill, _ = Skill.objects.get_or_create(name=name.strip())
@@ -259,3 +262,31 @@ def get_ad(request, ad_id):
     elif ad.status == "failed":
         body["error"] = ad.error
     return Response(body)  # 200 OK is the default
+
+
+@api_view(["POST"])  # POST, not GET: it changes state (failed -> pending) and queues work
+def retry_ad(request, ad_id):
+    """POST /api/ads/<ad_id>/retry/ — re-queue an ad whose parse failed."""
+    # Check and change in ONE database step. Only a row that is still "failed"
+    # gets updated; .update() returns how many rows it changed (0 or 1).
+    # Two quick clicks: the first changes 1 row, the second finds the status
+    # already "pending", changes 0 rows -> 409. The ad is queued once, not twice.
+    updated = JobAd.objects.filter(id=ad_id, status="failed").update(status="pending", error="")
+
+    if not updated:
+        # 0 rows: either the ad doesn't exist, or it isn't "failed".
+        try:
+            ad = JobAd.objects.get(id=ad_id)
+        except JobAd.DoesNotExist:
+            return Response({"error": f"Ad {ad_id} not found"}, status=http_status.HTTP_404_NOT_FOUND)
+        # 409 Conflict: the request clashes with the ad's current state.
+        return Response(
+            {"error": f"Ad {ad_id} is {ad.status}; only failed ads can be retried"},
+            status=http_status.HTTP_409_CONFLICT,
+        )
+
+    # Same as create_ad from here on: queue the id, return at once.
+    from .tasks import parse_ad
+    parse_ad.delay(ad_id)
+    logger.info("ad %s: retry queued", ad_id)
+    return Response({"id": ad_id, "status": "pending"}, status=http_status.HTTP_202_ACCEPTED)

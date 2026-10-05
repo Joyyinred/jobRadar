@@ -126,6 +126,31 @@
       } else {
         resultEl.textContent = data.error ?? "";
       }
+      // Failed? Offer a retry instead of making the user paste the ad again.
+      if (data.status === "failed") {
+        const retryButton = document.createElement("button");
+        retryButton.textContent = "Retry";
+        retryButton.addEventListener("click", () => retryAd(data.id));
+        resultEl.append(" ", retryButton);
+      }
+    }
+
+    // POST /api/ads/<id>/retry/ — re-queue a failed ad, then poll it like a new one.
+    async function retryAd(id) {
+      const response = await fetch(`/api/ads/${id}/retry/`, {
+        method: "POST",
+        headers: { Accept: "application/json" },
+      });
+      const data = await response.json();
+      if (response.status !== 202) {
+        // 409 (not failed any more) or 404: just show the server's message.
+        resultEl.textContent = data.error;
+        return;
+      }
+      resultEl.innerHTML = "";
+      statusEl.textContent = `Ad #${id}: pending — retry queued`;
+      loadList();
+      pollUntilDone(id);
     }
 
     loadList();  // fill the list as soon as the page opens

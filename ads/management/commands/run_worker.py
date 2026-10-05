@@ -32,9 +32,10 @@ from django.core.management.base import BaseCommand
 
 from ads.models import JobAd
 
-# Reusing the web code directly. A worker importing from views.py is awkward
-# (views are supposed to be about HTTP) — remember that for Day 7.
-from ads.views import call_llm, save_parsed
+# Day 7: from llm.py / services.py, no longer borrowed from views.py.
+# (This hand-written worker is kept only for comparison with ads/tasks.py.)
+from ads.llm import call_llm
+from ads.services import save_parsed
 
 logger = logging.getLogger(__name__)
 

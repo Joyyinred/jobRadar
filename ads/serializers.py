@@ -12,14 +12,34 @@ from rest_framework import serializers
 
 # --- In ----------------------------------------------------------------------
 
-class CreateAdSerializer(serializers.Serializer):
-    """Body of POST /api/ads/: {"raw_text": "..."}"""
+MAX_AD_CHARS = 50_000
 
-    # Same behaviour as the old request.data.get("raw_text", ""): missing -> "",
-    # empty allowed. No rules yet (Day 8).
+
+class CreateAdSerializer(serializers.Serializer):
+    """Body of POST /api/ads/: {"raw_text": "...", "source_url": "...", "confirm": false}
+
+    Only checks that can be answered from the request alone live here.
+    Anything that needs the database (duplicates) is in services.py.
+    """
+
+    # Required, and over-long ads are rejected rather than cut: the part we'd
+    # drop could be the requirements section.
     # trim_whitespace=False: DRF strips spaces by default; we store the raw ad
     # exactly as pasted.
-    raw_text = serializers.CharField(default="", allow_blank=True, trim_whitespace=False)
+    raw_text = serializers.CharField(max_length=MAX_AD_CHARS, trim_whitespace=False)
+    # Optional. Must look like a URL if given.
+    source_url = serializers.URLField(max_length=500, required=False, allow_null=True, allow_blank=True)
+    # The user saw a warning and said "parse it anyway".
+    confirm = serializers.BooleanField(default=False)
+
+    def validate_raw_text(self, value):
+        # With trim_whitespace=False, DRF's own blank check lets "   " through.
+        if not value.strip():
+            raise serializers.ValidationError("The ad is empty.")
+        return value
+
+    def validate_source_url(self, value):
+        return value or None  # "" -> None, so it never collides under the unique constraint
 
 
 # --- Out ---------------------------------------------------------------------

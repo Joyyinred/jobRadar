@@ -19,6 +19,8 @@
 
   <textarea id="raw_text" placeholder="Paste the job ad here..."></textarea>
   <br>
+  <input id="source_url" type="url" placeholder="Where you found it (optional URL)" style="width: 100%; margin-top: .5rem; font: inherit;">
+  <br>
   <button id="submit">Parse ad</button>
 
   <div id="status"></div>
@@ -32,26 +34,62 @@
     const statusEl = document.getElementById("status");
     const resultEl = document.getElementById("result");
 
-    button.addEventListener("click", async () => {
+    button.addEventListener("click", () => submitAd(false));
+
+    // POST /api/ads/. confirm=true = "I saw the warning, parse it anyway".
+    async function submitAd(confirm) {
       button.disabled = true;
       resultEl.innerHTML = "";
       statusEl.textContent = "Submitting...";
 
-      // POST /api/ads/ — the API we designed.
       const response = await fetch("/api/ads/", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ raw_text: document.getElementById("raw_text").value }),
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          raw_text: document.getElementById("raw_text").value,
+          source_url: document.getElementById("source_url").value,
+          confirm: confirm,
+        }),
       });
       const data = await response.json();
-
-      // The backend only says "received" (202). The worker parses it later.
-      statusEl.textContent = `Ad #${data.id}: ${data.status} — received, parsing in the background`;
       button.disabled = false;
-      loadList();  // the new ad should now appear in the list
 
+      // Day 8 Part 1: the backend answers in four different shapes, so the
+      // page needs four different branches to read them. (Part 2 fixes this.)
+
+      // 1) 400 — DRF's validation format: {"raw_text": ["msg"], "source_url": ["msg"]}
+      if (response.status === 400) {
+        statusEl.textContent = "Please fix:";
+        resultEl.textContent = Object.entries(data)
+          .map(([field, messages]) => `${field}: ${messages.join(" ")}`)
+          .join(" | ");
+        return;
+      }
+
+      // 2) 200 + "warning" — nothing saved; offer a confirm button.
+      if (data.warning) {
+        statusEl.textContent = "Warning:";
+        resultEl.textContent = data.warning + " ";
+        const confirmButton = document.createElement("button");
+        confirmButton.textContent = "Parse anyway";
+        confirmButton.addEventListener("click", () => submitAd(true));
+        resultEl.appendChild(confirmButton);
+        return;
+      }
+
+      // 3) 200 + "duplicate" — the ad we already have.
+      if (data.duplicate) {
+        render(data);
+        statusEl.textContent = data.message;
+        if (data.status === "pending" || data.status === "processing") pollUntilDone(data.id);
+        return;
+      }
+
+      // 4) 202 — new ad, queued. The worker parses it later.
+      statusEl.textContent = `Ad #${data.id}: ${data.status} — received, parsing in the background`;
+      loadList();  // the new ad should now appear in the list
       pollUntilDone(data.id);  // Day 6: keep asking until it's done
-    });
+    }
 
     // ---- Day 6: polling ----------------------------------------------------
     // The backend can't call the browser ("you're done!"); HTTP only lets the

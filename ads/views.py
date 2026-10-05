@@ -41,10 +41,30 @@ def list_ads(request):
 def create_ad(request):
     """POST /api/ads/   body: {"raw_text": "..."}"""
     serializer = CreateAdSerializer(data=request.data)
+    # Invalid input -> DRF answers 400 by itself, in ITS format: {"raw_text": ["..."]}
     serializer.is_valid(raise_exception=True)
-    ad = services.submit_ad(serializer.validated_data["raw_text"])
+    data = serializer.validated_data
+
+    result = services.submit_ad(data["raw_text"], data.get("source_url"), data["confirm"])
+
+    # Day 8 Part 1: one if/else branch per outcome, each inventing its own
+    # response shape. Part 2 replaces this with one error format.
+    if result["outcome"] == "duplicate":
+        # 200, not 202: nothing new was created. The existing ad, plus a note.
+        body = AdDetailSerializer(result["ad"]).data
+        body["duplicate"] = True
+        body["message"] = f"Already submitted as ad #{result['ad'].id} ({result['reason']})"
+        return Response(body, status=http_status.HTTP_200_OK)
+
+    if result["outcome"] == "warning":
+        # Nothing saved. Send it again with "confirm": true to go ahead.
+        return Response(
+            {"warning": result["message"], "needs_confirmation": True},
+            status=http_status.HTTP_200_OK,
+        )
+
     # 202 Accepted = "got it, not done yet". The LLM call happens in the worker.
-    return Response(AdDetailSerializer(ad).data, status=http_status.HTTP_202_ACCEPTED)
+    return Response(AdDetailSerializer(result["ad"]).data, status=http_status.HTTP_202_ACCEPTED)
 
 
 @api_view(["GET"])  # only GET is allowed here; a POST to this URL gets 405

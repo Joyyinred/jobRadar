@@ -8,7 +8,11 @@ Called by two kinds of "front desk":
 Rule of thumb: nothing in here knows about request, Response or status codes,
 so the same function works from a view, a worker, a script or a test.
 """
+import hashlib
 import logging
+import re
+
+from django.db import IntegrityError, transaction
 
 from .llm import call_llm
 from .models import AdSkill, Company, JobAd, Skill
@@ -35,16 +39,76 @@ def get_ad(ad_id):
 
 # --- Submitting and retrying (web side) --------------------------------------
 
-def submit_ad(raw_text):
-    """Save a new ad as pending and queue it for parsing. Returns the JobAd."""
+SHORT_AD_CHARS = 200  # below this it's probably not a whole ad
+
+
+def normalise(raw_text):
+    """Same ad, different whitespace -> same text. Used only for the hash;
+    raw_text itself is stored untouched."""
+    return re.sub(r"\s+", " ", raw_text.replace("\r\n", "\n")).strip()
+
+
+def content_hash_of(raw_text):
+    """SHA-256 of the normalised text: a 64-character fingerprint of the ad."""
+    return hashlib.sha256(normalise(raw_text).encode("utf-8")).hexdigest()
+
+
+def submit_ad(raw_text, source_url=None, confirm=False):
+    """Save a new ad as pending and queue it for parsing.
+
+    Day 8 Part 1: every outcome comes back in its own ad-hoc shape, on purpose.
+    Returns one of:
+      {"outcome": "duplicate", "ad": <existing JobAd>, "reason": "..."}
+      {"outcome": "warning",   "message": "..."}          (nothing saved)
+      {"outcome": "created",   "ad": <new JobAd>}
+    """
+    content_hash = content_hash_of(raw_text)
+
+    # Exact duplicate, same text -> hand back the ad we already have.
+    # No new row, no second LLM call.
+    existing = JobAd.objects.filter(content_hash=content_hash).first()
+    if existing:
+        logger.info("ad %s: same content submitted again", existing.id)
+        return {"outcome": "duplicate", "ad": existing, "reason": "same_content"}
+
+    # Exact duplicate, same URL -> same.
+    if source_url:
+        existing = JobAd.objects.filter(source_url=source_url).first()
+        if existing:
+            logger.info("ad %s: same source_url submitted again", existing.id)
+            return {"outcome": "duplicate", "ad": existing, "reason": "same_url"}
+
+    # Warning: allowed, but only after the user confirms.
+    if len(normalise(raw_text)) < SHORT_AD_CHARS and not confirm:
+        return {
+            "outcome": "warning",
+            "message": f"This is under {SHORT_AD_CHARS} characters — it may not be a whole ad. Parse it anyway?",
+        }
+
     # 1. Save the raw ad, status pending. The database is the source of truth.
-    ad = JobAd.objects.create(raw_text=raw_text, status="pending")
+    try:
+        # atomic: if the INSERT fails, roll back just this step cleanly.
+        with transaction.atomic():
+            ad = JobAd.objects.create(
+                raw_text=raw_text, content_hash=content_hash, source_url=source_url, status="pending",
+            )
+    except IntegrityError:
+        # The second line of defence. Two identical submits at the same moment
+        # both passed the checks above; the unique constraint let only one
+        # INSERT through. This one lost — return the winner.
+        existing = JobAd.objects.filter(content_hash=content_hash).first()
+        if existing is None and source_url:
+            existing = JobAd.objects.filter(source_url=source_url).first()
+        if existing is None:
+            raise  # some other constraint failed — not a duplicate, don't hide it
+        logger.info("ad %s: duplicate caught by the database constraint", existing.id)
+        return {"outcome": "duplicate", "ad": existing, "reason": "same_content"}
     logger.info("ad %s saved (%d chars)", ad.id, len(raw_text))  # ids only, never ad text
 
     # 2. Hand ONLY the id to the queue — the ad itself is already in the database.
     enqueue_parse(ad.id)
     logger.info("ad %s queued", ad.id)
-    return ad
+    return {"outcome": "created", "ad": ad}
 
 
 def retry_ad(ad_id):

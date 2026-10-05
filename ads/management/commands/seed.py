@@ -19,6 +19,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from ads.models import AdSkill, Company, JobAd, Skill
+from ads.services import content_hash_of
 
 COMPANIES = [
     "Nordvik Tech", "Fjällström Data", "Kustlinje Systems", "Björkdal Software",
@@ -128,11 +129,22 @@ class Command(BaseCommand):
             self.stdout.write("flushed ads tables")
 
         now = timezone.now()
+        created = skipped = 0
         for _ in range(options["count"]):
             data = build_ad()
+            raw_text = raw_text_for(data)
+            content_hash = content_hash_of(raw_text)
+            # Day 8: same text twice is a duplicate now — the database would
+            # refuse it. (Re-running seed without --flush skips everything,
+            # because random.seed(42) makes the same ads again.)
+            if JobAd.objects.filter(content_hash=content_hash).exists():
+                skipped += 1
+                continue
+            created += 1
             company, _ = Company.objects.get_or_create(name=data["company"])
             ad = JobAd.objects.create(
-                raw_text=raw_text_for(data),
+                raw_text=raw_text,
+                content_hash=content_hash,
                 status="completed",
                 company=company,
                 title=data["title"],
@@ -152,6 +164,7 @@ class Command(BaseCommand):
             )
 
         self.stdout.write(self.style.SUCCESS(
-            f"seeded {options['count']} ads: {Company.objects.count()} companies, "
+            f"seeded {created} ads ({skipped} skipped as duplicates). In the database: "
+            f"{JobAd.objects.count()} ads, {Company.objects.count()} companies, "
             f"{Skill.objects.count()} skills, {AdSkill.objects.count()} ad-skill links"
         ))

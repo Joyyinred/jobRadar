@@ -38,6 +38,16 @@ class JobAd(models.Model):
 
     # --- What was submitted, and where the parse is ---
     raw_text = models.TextField()  # never modified: the source of truth
+
+    # Day 8: exact-duplicate protection, enforced by the DATABASE (unique=True),
+    # not only by code — two identical requests at the same moment can both
+    # pass a check in Python, but only one INSERT can win here.
+    # SHA-256 of the normalised raw text (see services.content_hash_of).
+    content_hash = models.CharField(max_length=64, unique=True)
+    # Where the ad was found. Optional; if given, the same URL can only be
+    # stored once. null (not "") when missing: Postgres allows many NULLs
+    # under a unique constraint, but only one "".
+    source_url = models.URLField(max_length=500, null=True, blank=True, unique=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
     error = models.CharField(max_length=200, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)

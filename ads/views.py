@@ -14,7 +14,14 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from . import services
-from .serializers import AdDetailSerializer, AdSummarySerializer, CreateAdSerializer
+from .adapters import JobTechSearchAdapter, PlatsbankenUrlAdapter
+from .serializers import (
+    AdDetailSerializer,
+    AdSummarySerializer,
+    CreateAdSerializer,
+    JobTechSearchImportSerializer,
+    PlatsbankenImportSerializer,
+)
 
 
 def index(request):
@@ -45,13 +52,20 @@ def create_ad(request):
     # May raise WarningException (409, via the handler) — nothing to do here.
     ad, created = services.submit_ad(data["raw_text"], data.get("source_url"), data["confirm"])
 
+    return ingest_response(ad, created)
+
+
+def ingest_response(ad, created):
+    """The reply for "one ad in": the same for every source.
+
+    202 Accepted = new ad, "got it, not done yet" — the LLM call happens in the worker.
+    200 OK + duplicate = the ad we already have; 202 would mean "new work
+    started", and none did.
+    """
     body = AdDetailSerializer(ad).data
     if not created:
-        # Exact duplicate: the ad we already have. 200 = "here it is";
-        # 202 would mean "new work started", and none did.
         body["duplicate"] = True
         return Response(body, status=http_status.HTTP_200_OK)
-    # 202 Accepted = "got it, not done yet". The LLM call happens in the worker.
     return Response(body, status=http_status.HTTP_202_ACCEPTED)
 
 
@@ -67,3 +81,34 @@ def retry_ad(request, ad_id):
     """POST /api/ads/<ad_id>/retry/ — re-queue an ad whose parse failed."""
     ad = services.retry_ad(ad_id)  # missing -> 404, not failed -> 409, via the handler
     return Response(AdDetailSerializer(ad).data, status=http_status.HTTP_202_ACCEPTED)
+
+
+# --- Imports (Day 9): other sources, same ingest() underneath -----------------
+
+@api_view(["POST"])
+def import_platsbanken(request):
+    """POST /api/imports/platsbanken/   body: {"url": "https://arbetsformedlingen.se/platsbanken/annonser/31575359", "confirm": false}"""
+    serializer = PlatsbankenImportSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+
+    data = serializer.validated_data
+
+    # Not a Platsbanken link -> 400; removed ad -> 404; JobTech down -> 502;
+    # a warning -> 409 (send again with confirm) — all raised, all via the handler.
+    adapter = PlatsbankenUrlAdapter(data["url"])
+    ad, created = services.ingest_one(adapter, confirm=data["confirm"])
+    return ingest_response(ad, created)
+
+
+@api_view(["POST"])
+def import_jobtech_search(request):
+    """POST /api/imports/jobtech-search/   body: {"query": "junior utvecklare", "limit": 20}
+
+    Answers with counts; the new ads are queued and show up in the list.
+    """
+    serializer = JobTechSearchImportSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    data = serializer.validated_data
+
+    counts = services.ingest_batch(JobTechSearchAdapter(data["query"], data["limit"]))
+    return Response(counts, status=http_status.HTTP_200_OK)

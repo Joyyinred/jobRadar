@@ -23,6 +23,17 @@
   <br>
   <button id="submit">Parse ad</button>
 
+  <h2>Or import from Platsbanken</h2>
+  <p>
+    <input id="platsbanken_url" type="url" placeholder="https://arbetsformedlingen.se/platsbanken/annonser/31575359" style="width: 70%; font: inherit;">
+    <button id="import_link">Import link</button>
+  </p>
+  <p>
+    <input id="search_query" placeholder="Search Platsbanken, e.g. junior utvecklare" style="width: 55%; font: inherit;">
+    <input id="search_limit" type="number" min="1" max="100" value="10" style="width: 4rem; font: inherit;">
+    <button id="import_search">Import search results</button>
+  </p>
+
   <div id="status"></div>
   <div id="result"></div>
 
@@ -30,50 +41,67 @@
   <ul id="ad-list"></ul>
 
   <script>
-    const button = document.getElementById("submit");
     const statusEl = document.getElementById("status");
     const resultEl = document.getElementById("result");
+    const sendButtons = [...document.querySelectorAll("#submit, #import_link, #import_search")];
 
-    // Read the form ONCE, at click time.
-    button.addEventListener("click", () => submitAd({
+    // Each button reads its inputs ONCE, at click time.
+    document.getElementById("submit").addEventListener("click", () => sendOneAd("/api/ads/", {
       raw_text: document.getElementById("raw_text").value,
       source_url: document.getElementById("source_url").value,
       confirm: false,
     }));
+    document.getElementById("import_link").addEventListener("click", () => sendOneAd("/api/imports/platsbanken/", {
+      url: document.getElementById("platsbanken_url").value,
+      confirm: false,
+    }));
+    document.getElementById("import_search").addEventListener("click", () => importSearch({
+      query: document.getElementById("search_query").value,
+      limit: Number(document.getElementById("search_limit").value),
+    }));
 
-    // POST /api/ads/ with exactly this body.
-    async function submitAd(body) {
-      // A new submission takes over the page: stop any earlier ad's polling,
-      // or it would overwrite this answer (e.g. a warning) when it finishes.
-      pollingId = null;
-      button.disabled = true;
-      resultEl.innerHTML = "";
-      statusEl.textContent = "Submitting...";
-
-      let response, data;
+    // POST a body, return {response, data} — or null if the server couldn't be
+    // reached (network down, restarting, or a non-JSON reply such as a proxy's
+    // HTML error page). Buttons are disabled meanwhile and ALWAYS re-enabled.
+    async function postJson(url, body) {
+      sendButtons.forEach((b) => (b.disabled = true));
       try {
-        response = await fetch("/api/ads/", {
+        const response = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json", Accept: "application/json" },
           body: JSON.stringify(body),
         });
-        data = await response.json();
+        return { response, data: await response.json() };
       } catch (err) {
-        // Network down, server restarting, or a non-JSON reply (e.g. a proxy's
-        // HTML error page). Without this, the button would stay disabled.
         statusEl.textContent = "Error:";
         resultEl.textContent = "Could not reach the server. Please try again.";
-        return;
+        return null;
       } finally {
-        button.disabled = false;  // runs on every path, including the return above
+        sendButtons.forEach((b) => (b.disabled = false));  // runs on every path
       }
+    }
+
+    // "One ad in" — pasting (/api/ads/) and a Platsbanken link
+    // (/api/imports/platsbanken/) answer the same way: 202 new, 200 duplicate,
+    // or an error/warning. Day 9: the backend's sources share ingest(), and
+    // the page's two "one ad" buttons share this.
+    async function sendOneAd(url, body) {
+      // A new submission takes over the page: stop any earlier ad's polling,
+      // or it would overwrite this answer (e.g. a warning) when it finishes.
+      pollingId = null;
+      resultEl.innerHTML = "";
+      statusEl.textContent = "Submitting...";
+
+      const reply = await postJson(url, body);
+      if (!reply) return;
+      const { response, data } = reply;
 
       // Day 8 Part 2: every error has the same shape {type, code, message, detail},
       // so ONE branch handles all of them.
       if (!response.ok) {
         // Confirming re-sends the SAME body that was warned about — not whatever
-        // is in the textarea by the time the user clicks.
-        showError(data, () => submitAd({ ...body, confirm: true }));
+        // is in the inputs by the time the user clicks.
+        showError(data, () => sendOneAd(url, { ...body, confirm: true }));
         return;
       }
 
@@ -91,11 +119,33 @@
       pollUntilDone(data.id);  // Day 6: keep asking until it's done
     }
 
+    // Many ads in: one page of a Platsbanken search. Answers with counts.
+    async function importSearch(body) {
+      pollingId = null;
+      resultEl.innerHTML = "";
+      statusEl.textContent = "Importing...";
+
+      const reply = await postJson("/api/imports/jobtech-search/", body);
+      if (!reply) return;
+      const { response, data } = reply;
+      if (!response.ok) {
+        showError(data);
+        return;
+      }
+      statusEl.textContent = "Imported:";
+      resultEl.textContent =
+        `${data.created} new (parsing in the background), ${data.duplicates} already here, ${data.skipped} skipped.`;
+      loadList();  // the new ads appear as pending; refresh the list to see them finish
+    }
+
     // ---- Day 8: the one error handler --------------------------------------
     // Works for every API error, because the backend always sends
     // {type, code, message, detail}. `type` decides what the user can do next.
     function showError(error, onConfirm) {
-      const titles = { validation: "Please fix:", not_found: "Not found:", block: "Not allowed:", warning: "Warning:" };
+      const titles = {
+        validation: "Please fix:", not_found: "Not found:", block: "Not allowed:",
+        warning: "Warning:", upstream: "Platsbanken problem:",
+      };
       statusEl.textContent = titles[error.type] ?? "Error:";
       resultEl.textContent = error.message + " ";
       // A warning can be overridden: offer to send the same request with confirm.

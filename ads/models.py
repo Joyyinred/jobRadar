@@ -49,6 +49,24 @@ class JobAd(models.Model):
     # warning the user confirms (services.submit_ad), not a silent duplicate.
     # Indexed, because submit_ad looks it up on every submit.
     source_url = models.URLField(max_length=500, null=True, blank=True, db_index=True)
+
+    # Day 9: where the ad came from, and its id over there.
+    SOURCE_CHOICES = [
+        ("manual_paste", "manual_paste"),   # pasted into the form (LinkedIn, company sites, ...)
+        ("jobtech_api", "jobtech_api"),     # Platsbanken, via the JobTech open API
+    ]
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default="manual_paste")
+    # e.g. the JobTech ad id "31575359". Null for pasted ads. Unique per source
+    # (see Meta): importing the same JobTech ad twice must not store it twice.
+    source_external_id = models.CharField(max_length=64, null=True, blank=True)
+
+    # When the ad is due to come down (JobTech's last_publication_date) and
+    # when we saw it actually gone. Times, not a True/False "still available":
+    # null removed_at already means "not seen removed", and the time also
+    # says WHEN — e.g. how long a role stayed open. Both null for pasted ads:
+    # null means "unknown", not "still open". Removed ads are kept, never deleted.
+    expires_at = models.DateTimeField(null=True, blank=True)
+    removed_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
     error = models.CharField(max_length=200, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -66,6 +84,18 @@ class JobAd(models.Model):
     company = models.ForeignKey(
         Company, null=True, blank=True, on_delete=models.PROTECT, related_name="ads"
     )
+
+    class Meta:
+        constraints = [
+            # The same JobTech ad (same source + same external id) can only be
+            # stored once — re-running an import never duplicates. Rows with no
+            # external id (pasted ads) are left out of the rule.
+            models.UniqueConstraint(
+                fields=["source", "source_external_id"],
+                condition=models.Q(source_external_id__isnull=False),
+                name="unique_external_id_per_source",
+            ),
+        ]
 
     def __str__(self):
         return f"JobAd {self.id} ({self.status})"

@@ -66,6 +66,14 @@ class BlockError(BaseAppException):
     http_status = http_status.HTTP_409_CONFLICT
 
 
+class UpstreamError(BaseAppException):
+    """A service we depend on (e.g. the JobTech API) failed or timed out.
+    Not the user's fault and not ours: 502 Bad Gateway. Trying later may work."""
+
+    type = "upstream"
+    http_status = http_status.HTTP_502_BAD_GATEWAY
+
+
 class WarningException(BaseAppException):
     """Allowed, but only if the user confirms. Nothing was saved.
 

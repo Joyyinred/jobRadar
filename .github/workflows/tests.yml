@@ -13,6 +13,12 @@ on:
   push:
     branches: [main]     # and after merging, so main itself stays checked
 
+# The job only reads the code. Without this, the automatic GITHUB_TOKEN gets
+# the repo's default permissions, which may include write — more than any
+# step here (or a compromised third-party action) should ever have.
+permissions:
+  contents: read
+
 jobs:
   tests:
     # This job name ("tests") is what the branch protection rule selects as a

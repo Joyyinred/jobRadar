@@ -44,10 +44,11 @@ class JobAd(models.Model):
     # pass a check in Python, but only one INSERT can win here.
     # SHA-256 of the normalised raw text (see services.content_hash_of).
     content_hash = models.CharField(max_length=64, unique=True)
-    # Where the ad was found. Optional; if given, the same URL can only be
-    # stored once. null (not "") when missing: Postgres allows many NULLs
-    # under a unique constraint, but only one "".
-    source_url = models.URLField(max_length=500, null=True, blank=True, unique=True)
+    # Where the ad was found. Optional. NOT unique: one careers page URL can
+    # hold several different ads — a repeat URL with different text is a
+    # warning the user confirms (services.submit_ad), not a silent duplicate.
+    # Indexed, because submit_ad looks it up on every submit.
+    source_url = models.URLField(max_length=500, null=True, blank=True, db_index=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
     error = models.CharField(max_length=200, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)

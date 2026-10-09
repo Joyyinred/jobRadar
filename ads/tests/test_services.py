@@ -63,10 +63,36 @@ def test_same_text_with_different_whitespace_is_a_duplicate(enqueued):
     assert again.id == first.id
 
 
-def test_same_url_different_text_is_a_duplicate(enqueued):
-    url = "https://example.com/jobs/42"
+def test_same_url_different_text_warns_and_saves_nothing(enqueued):
+    """One careers page URL can hold several ads: a different text under a
+    known URL must not be silently dropped — the user is asked."""
+    url = "https://example.com/careers"
     first, _ = services.submit_ad(LONG_AD, source_url=url)
-    again, created = services.submit_ad(LONG_AD + " (edited)", source_url=url)
+    enqueued.clear()
+
+    with pytest.raises(WarningException) as info:
+        services.submit_ad(LONG_AD + " A second role.", source_url=url)
+
+    assert info.value.code == "URL_ALREADY_USED"
+    assert info.value.detail == {"existing_id": first.id, "source_url": url}
+    assert JobAd.objects.count() == 1
+    assert enqueued == []
+
+
+def test_same_url_different_text_with_confirm_is_a_new_ad(enqueued):
+    url = "https://example.com/careers"
+    first, _ = services.submit_ad(LONG_AD, source_url=url)
+    second, created = services.submit_ad(LONG_AD + " A second role.", source_url=url, confirm=True)
+    assert created
+    assert second.id != first.id
+    assert JobAd.objects.filter(source_url=url).count() == 2
+
+
+def test_same_url_same_text_is_still_a_plain_duplicate(enqueued):
+    # Same text wins over the URL rule: nothing to ask about, it's the same ad.
+    url = "https://example.com/careers"
+    first, _ = services.submit_ad(LONG_AD, source_url=url)
+    again, created = services.submit_ad(LONG_AD, source_url=url)
     assert not created
     assert again.id == first.id
 

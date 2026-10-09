@@ -136,6 +136,52 @@ def test_wrong_method_is_405_in_the_same_format(api):
     assert_error(api.put(ADS, {}), 405, "error", "METHOD_NOT_ALLOWED")
 
 
+def test_same_url_different_text_is_409_warning_then_202_with_confirm(api, enqueued):
+    url = "https://example.com/careers"
+    first = api.post(ADS, {"raw_text": LONG_AD, "source_url": url}, format="json").json()
+
+    second = {"raw_text": LONG_AD + " A second role.", "source_url": url}
+    body = assert_error(api.post(ADS, second, format="json"), 409, "warning", "URL_ALREADY_USED")
+    assert body["detail"]["existing_id"] == first["id"]
+
+    assert api.post(ADS, {**second, "confirm": True}, format="json").status_code == 202
+
+
+def test_django_http404_becomes_404_not_500(api, monkeypatch):
+    """Django's own Http404 (e.g. from get_object_or_404) must come out as a
+    404 in our format — not fall through to INTERNAL_ERROR."""
+    from django.http import Http404
+
+    def missing(ad_id):
+        raise Http404("No JobAd matches the given query.")
+
+    monkeypatch.setattr(services, "get_ad", missing)
+    assert_error(api.get(f"{ADS}1/"), 404, "not_found", "NOT_FOUND")
+
+
+def test_django_permission_denied_becomes_403(api, monkeypatch):
+    from django.core.exceptions import PermissionDenied
+
+    def forbidden(ad_id):
+        raise PermissionDenied
+
+    monkeypatch.setattr(services, "get_ad", forbidden)
+    assert_error(api.get(f"{ADS}1/"), 403, "error", "PERMISSION_DENIED")
+
+
+def test_validation_error_with_plain_string_detail_is_readable(api, monkeypatch):
+    """A ValidationError raised outside a serializer can carry a plain string
+    per field; the message must not come out as 'T o o   l o n g'."""
+    from rest_framework.exceptions import ValidationError as DRFValidationError
+
+    def too_long(ad_id):
+        raise DRFValidationError({"raw_text": "Too long"})
+
+    monkeypatch.setattr(services, "get_ad", too_long)
+    body = assert_error(api.get(f"{ADS}1/"), 400, "validation", "INVALID_INPUT")
+    assert body["message"] == "raw_text: Too long"
+
+
 def test_unexpected_bug_is_500_without_a_stack_trace(api, monkeypatch):
     """A crash we didn't plan for: the user gets a safe message, never the
     traceback (which would leak code paths and data)."""

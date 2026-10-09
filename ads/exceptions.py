@@ -23,6 +23,8 @@ import logging
 from rest_framework import exceptions as drf_exceptions
 from rest_framework import status as http_status
 from rest_framework.response import Response
+from rest_framework.views import exception_handler as drf_exception_handler
+from rest_framework.views import set_rollback
 
 logger = logging.getLogger(__name__)
 
@@ -76,29 +78,54 @@ class WarningException(BaseAppException):
     http_status = http_status.HTTP_409_CONFLICT
 
 
+def _flatten(messages):
+    """DRF error details come as a list, a single string, or a nested dict
+    (nested serializers). Turn any of them into one readable string."""
+    if isinstance(messages, dict):
+        return " ".join(f"{key}: {_flatten(value)}" for key, value in messages.items())
+    if isinstance(messages, (list, tuple)):
+        return " ".join(_flatten(m) for m in messages)
+    return str(messages)
+
+
 def exception_handler(exc, context):
     """DRF calls this for every exception raised in a view. One format out."""
     # 1. Our own errors: already know their shape.
     if isinstance(exc, BaseAppException):
+        set_rollback()  # same as DRF does: undo a request-wide transaction, if any
         return Response(exc.to_dict(), status=exc.http_status)
 
-    # 2. DRF's own validation errors (from serializer.is_valid). DRF's shape is
-    #    {"raw_text": ["msg"], ...} — fold it into ours, field messages in detail.
-    if isinstance(exc, drf_exceptions.ValidationError):
-        fields = exc.detail if isinstance(exc.detail, dict) else {"non_field_errors": exc.detail}
-        message = " ".join(f"{field}: {' '.join(str(m) for m in msgs)}" for field, msgs in fields.items())
-        error = ValidationError("INVALID_INPUT", message, {"fields": fields})
-        return Response(error.to_dict(), status=error.http_status)
+    # 2. Let DRF's own handler go first. It knows things we'd otherwise have to
+    #    copy: Django's Http404 -> 404 and PermissionDenied -> 403, response
+    #    headers like Retry-After (throttling), and transaction rollback.
+    #    It returns None for anything it doesn't recognise.
+    response = drf_exception_handler(exc, context)
 
-    # 3. Any other DRF error (405 wrong method, 400 malformed JSON, ...):
-    #    keep DRF's status code, use our shape.
-    if isinstance(exc, drf_exceptions.APIException):
-        body = {"type": "error", "code": exc.default_code.upper(), "message": str(exc.detail), "detail": {}}
-        return Response(body, status=exc.status_code)
-
-    # 4. Anything else is a bug. Full traceback to the log for us; a safe,
+    # 3. Not recognised -> a bug. Full traceback to the log for us; a safe,
     #    generic message to the user — never a stack trace in the response.
-    view = context.get("view")
-    logger.exception("unhandled error in %s", view.__class__.__name__ if view else "?")
-    body = {"type": "error", "code": "INTERNAL_ERROR", "message": "Something went wrong. Please try again.", "detail": {}}
-    return Response(body, status=http_status.HTTP_500_INTERNAL_SERVER_ERROR)
+    if response is None:
+        view = context.get("view")
+        logger.exception("unhandled error in %s", view.__class__.__name__ if view else "?")
+        body = {"type": "error", "code": "INTERNAL_ERROR", "message": "Something went wrong. Please try again.", "detail": {}}
+        return Response(body, status=http_status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    # 4. Recognised: keep DRF's status code and headers, replace the body with
+    #    our shape.
+    if isinstance(exc, drf_exceptions.ValidationError):
+        # Serializer errors: {"raw_text": ["msg"], ...} — field messages go in detail.
+        fields = response.data if isinstance(response.data, dict) else {"non_field_errors": response.data}
+        error = ValidationError("INVALID_INPUT", _flatten(fields), {"fields": fields})
+        response.data = error.to_dict()
+        return response
+
+    # Everything else DRF knows (404, 403, 405, malformed JSON, ...) arrives as
+    # {"detail": ErrorDetail("text", code="not_found")}.
+    detail = response.data.get("detail", "") if isinstance(response.data, dict) else response.data
+    code = getattr(detail, "code", None) or "error"
+    response.data = {
+        "type": "not_found" if response.status_code == http_status.HTTP_404_NOT_FOUND else "error",
+        "code": str(code).upper(),
+        "message": _flatten(detail),
+        "detail": {},
+    }
+    return response

@@ -62,9 +62,12 @@ def submit_ad(raw_text, source_url=None, confirm=False):
 
     Returns (ad, created):
       (new JobAd, True)       — saved and queued
-      (existing JobAd, False) — exact duplicate; the ad we already have.
-                                Not an error: the ad IS in the system (idempotent).
-    Raises WarningException if the user must confirm first (nothing saved).
+      (existing JobAd, False) — exact duplicate (same text); the ad we already
+                                have. Not an error: the ad IS in the system (idempotent).
+    Raises WarningException if the user must confirm first (nothing saved):
+      URL_ALREADY_USED — same source_url, different text
+      AD_TOO_SHORT     — under SHORT_AD_CHARS
+    confirm=True accepts every warning at once.
     """
     content_hash = content_hash_of(raw_text)
 
@@ -75,12 +78,17 @@ def submit_ad(raw_text, source_url=None, confirm=False):
         logger.info("ad %s: same content submitted again", existing.id)
         return existing, False
 
-    # Exact duplicate, same URL -> same.
-    if source_url:
+    # Same URL but DIFFERENT text: could be the same ad edited, or a second
+    # role on one careers page. Don't silently drop it, and don't silently
+    # store it twice either — ask. Confirmed -> stored as a new ad.
+    if source_url and not confirm:
         existing = JobAd.objects.filter(source_url=source_url).first()
         if existing:
-            logger.info("ad %s: same source_url submitted again", existing.id)
-            return existing, False
+            raise WarningException(
+                "URL_ALREADY_USED",
+                f"Ad #{existing.id} came from this link but has different text. Save this one as a new ad?",
+                {"existing_id": existing.id, "source_url": source_url},
+            )
 
     # Warning: allowed, but only after the user confirms.
     length = len(normalise(raw_text))
@@ -100,11 +108,9 @@ def submit_ad(raw_text, source_url=None, confirm=False):
             )
     except IntegrityError:
         # The second line of defence. Two identical submits at the same moment
-        # both passed the checks above; the unique constraint let only one
-        # INSERT through. This one lost — return the winner.
+        # both passed the checks above; the unique constraint on content_hash
+        # let only one INSERT through. This one lost — return the winner.
         existing = JobAd.objects.filter(content_hash=content_hash).first()
-        if existing is None and source_url:
-            existing = JobAd.objects.filter(source_url=source_url).first()
         if existing is None:
             raise  # some other constraint failed — not a duplicate, don't hide it
         logger.info("ad %s: duplicate caught by the database constraint", existing.id)

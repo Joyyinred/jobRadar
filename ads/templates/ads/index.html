@@ -34,30 +34,46 @@
     const statusEl = document.getElementById("status");
     const resultEl = document.getElementById("result");
 
-    button.addEventListener("click", () => submitAd(false));
+    // Read the form ONCE, at click time.
+    button.addEventListener("click", () => submitAd({
+      raw_text: document.getElementById("raw_text").value,
+      source_url: document.getElementById("source_url").value,
+      confirm: false,
+    }));
 
-    // POST /api/ads/. confirm=true = "I saw the warning, parse it anyway".
-    async function submitAd(confirm) {
+    // POST /api/ads/ with exactly this body.
+    async function submitAd(body) {
+      // A new submission takes over the page: stop any earlier ad's polling,
+      // or it would overwrite this answer (e.g. a warning) when it finishes.
+      pollingId = null;
       button.disabled = true;
       resultEl.innerHTML = "";
       statusEl.textContent = "Submitting...";
 
-      const response = await fetch("/api/ads/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({
-          raw_text: document.getElementById("raw_text").value,
-          source_url: document.getElementById("source_url").value,
-          confirm: confirm,
-        }),
-      });
-      const data = await response.json();
-      button.disabled = false;
+      let response, data;
+      try {
+        response = await fetch("/api/ads/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify(body),
+        });
+        data = await response.json();
+      } catch (err) {
+        // Network down, server restarting, or a non-JSON reply (e.g. a proxy's
+        // HTML error page). Without this, the button would stay disabled.
+        statusEl.textContent = "Error:";
+        resultEl.textContent = "Could not reach the server. Please try again.";
+        return;
+      } finally {
+        button.disabled = false;  // runs on every path, including the return above
+      }
 
       // Day 8 Part 2: every error has the same shape {type, code, message, detail},
       // so ONE branch handles all of them.
       if (!response.ok) {
-        showError(data, () => submitAd(true));
+        // Confirming re-sends the SAME body that was warned about — not whatever
+        // is in the textarea by the time the user clicks.
+        showError(data, () => submitAd({ ...body, confirm: true }));
         return;
       }
 

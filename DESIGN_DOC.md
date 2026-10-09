@@ -351,22 +351,44 @@ Deployment target (M8): AWS (Lambda / SQS / RDS), provisioned with Terraform.
 
 ### 9.1 Adapters
 
-Every source implements one interface:
+Every source implements one interface (`ads/adapters.py`):
 
 ```python
-class JobAdSource(Protocol):
-    def fetch(self) -> Iterable[RawJobAd]: ...
-    # RawJobAd: raw_content, source, source_url, source_external_id
+class JobAdAdapter(ABC):
+    source: str                  # JobAd.source for its ads
+    external_id: str | None      # known before fetching? (e.g. read from a link)
+    def fetch(self) -> list[RawJobAd]: ...
+
+@dataclass(frozen=True)
+class RawJobAd:
+    raw_text: str
+    source: str                  # "manual_paste" | "jobtech_api"
+    source_url: str | None
+    source_external_id: str | None
+    expires_at: datetime | None  # JobTech's last_publication_date
 ```
 
-| Adapter | Input |
-|---|---|
-| `ManualPasteSource` | text from the form |
-| `FileUploadSource` | saved HTML or PDF; text extracted before anything else |
-| `JobTechSource` | JobTech open API; paginated; idempotent via external id |
+| Adapter | Input | Endpoint |
+|---|---|---|
+| `PasteAdapter` | text pasted into the form (LinkedIn, company sites, ...) | `POST /api/ads/` |
+| `PlatsbankenUrlAdapter` | one Platsbanken link; the ad id is read from the URL | `POST /api/imports/platsbanken/` |
+| `JobTechSearchAdapter` | one page (≤100) of a JobTech free-text search | `POST /api/imports/jobtech-search/` |
 
-Everything downstream of the adapter sees only `RawJobAd`. Adding a source never touches
-parsing, dedup or aggregation.
+Both JobTech adapters share `JobTechClient` (HTTP, error mapping, JSON → `RawJobAd`).
+Everything downstream sees only `RawJobAd`: `services.ingest()` is the single place a
+`JobAd` is created and applies every rule (length, hash, duplicates, warnings). Adding a
+source never touches parsing, dedup or aggregation.
+
+**Dropped (2026-10-09):** `FileUploadSource` (saved HTML/PDF). Pasting covers it; the
+real need for volume is met by JobTech search import.
+
+**Not scraped, by design:** LinkedIn (terms forbid it, login wall) and company career
+sites (every site different, often JS-rendered). Those ads come in by paste.
+
+**Ads disappear.** JobTech returns 404 for a removed ad, the same as for an id that never
+existed. So the raw text is stored at import time, `expires_at` records the planned
+take-down, and `removed_at` (null = not seen removed) records when it was gone. Removed
+ads are kept for statistics.
 
 ### 9.2 Layering
 
@@ -466,8 +488,9 @@ Tests ship with each milestone, not in one block at the end.
 
 ## 15. Assumptions and open questions
 
-1. **JobTech access terms** for the specific endpoints used must be confirmed before
-   M5 — whether an API key is required and what licence applies to the ad data.
+1. **JobTech access terms** — *resolved 2026-10-05:* the JobSearch API
+   (`jobsearch.api.jobtechdev.se`) needs no API key. The licence for the ad data still
+   needs reading before anything is published from it.
 2. **Title similarity threshold** is chosen empirically at M5.
 3. **Minimum sample of 30 roles** is a starting point, not a statistical claim.
 4. **Evidence check tolerance** — exact substring after normalisation. Paraphrased

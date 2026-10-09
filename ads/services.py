@@ -14,7 +14,8 @@ import re
 
 from django.db import IntegrityError, transaction
 
-from .exceptions import BlockError, NotFoundError, WarningException
+from .adapters import PasteAdapter
+from .exceptions import BlockError, NotFoundError, ValidationError, WarningException
 from .llm import call_llm
 from .models import AdSkill, Company, JobAd, Skill
 
@@ -41,9 +42,13 @@ def get_ad(ad_id):
         raise NotFoundError("AD_NOT_FOUND", f"Ad {ad_id} not found", {"id": ad_id})
 
 
-# --- Submitting and retrying (web side) --------------------------------------
+# --- Ingesting ads (web side) -------------------------------------------------
+#
+# Every source goes through ingest(). Adapters (adapters.py) only translate a
+# source into RawJobAd; the rules about an ad live here, once.
 
-SHORT_AD_CHARS = 200  # below this it's probably not a whole ad
+MAX_AD_CHARS = 50_000   # longer is rejected, not cut: the cut part could be the requirements
+SHORT_AD_CHARS = 200    # below this it's probably not a whole ad
 
 
 def normalise(raw_text):
@@ -57,41 +62,60 @@ def content_hash_of(raw_text):
     return hashlib.sha256(normalise(raw_text).encode("utf-8")).hexdigest()
 
 
-def submit_ad(raw_text, source_url=None, confirm=False):
-    """Save a new ad as pending and queue it for parsing.
+def ingest(raw, confirm=False):
+    """Store one RawJobAd as a pending ad and queue it for parsing.
+
+    The ONLY place a JobAd is created from outside data — whichever adapter
+    produced `raw`, the same rules apply.
 
     Returns (ad, created):
       (new JobAd, True)       — saved and queued
-      (existing JobAd, False) — exact duplicate (same text); the ad we already
-                                have. Not an error: the ad IS in the system (idempotent).
-    Raises WarningException if the user must confirm first (nothing saved):
-      URL_ALREADY_USED — same source_url, different text
-      AD_TOO_SHORT     — under SHORT_AD_CHARS
-    confirm=True accepts every warning at once.
+      (existing JobAd, False) — already have it (same source id, or same text).
+                                Not an error: the ad IS in the system (idempotent).
+    Raises:
+      ValidationError  — the ad itself is unusable (empty / too long)
+      WarningException — allowed only with confirm=True (nothing saved):
+                           URL_ALREADY_USED  same source_url, different text
+                           AD_TOO_SHORT      under SHORT_AD_CHARS
     """
-    content_hash = content_hash_of(raw_text)
+    # 1. Rules about the ad itself. These live here, not only in the serializer:
+    #    a JobTech import never passes through a serializer.
+    if not raw.raw_text.strip():
+        raise ValidationError("AD_EMPTY", "The ad is empty.")
+    if len(raw.raw_text) > MAX_AD_CHARS:
+        raise ValidationError(
+            "AD_TOO_LONG", f"The ad is over {MAX_AD_CHARS:,} characters.",
+            {"chars": len(raw.raw_text), "max_chars": MAX_AD_CHARS},
+        )
 
-    # Exact duplicate, same text -> hand back the ad we already have.
-    # No new row, no second LLM call.
+    # 2. Already imported from this source? (Re-running an import must not duplicate.)
+    if raw.source_external_id:
+        existing = find_by_external_id(raw.source, raw.source_external_id)
+        if existing:
+            return existing, False
+
+    # 3. Exact duplicate, same text -> hand back the ad we already have.
+    #    No new row, no second LLM call.
+    content_hash = content_hash_of(raw.raw_text)
     existing = JobAd.objects.filter(content_hash=content_hash).first()
     if existing:
         logger.info("ad %s: same content submitted again", existing.id)
         return existing, False
 
-    # Same URL but DIFFERENT text: could be the same ad edited, or a second
-    # role on one careers page. Don't silently drop it, and don't silently
-    # store it twice either — ask. Confirmed -> stored as a new ad.
-    if source_url and not confirm:
-        existing = JobAd.objects.filter(source_url=source_url).first()
+    # 4. Same URL but DIFFERENT text: could be the same ad edited, or a second
+    #    role on one careers page. Don't silently drop it, and don't silently
+    #    store it twice either — ask. Confirmed -> stored as a new ad.
+    if raw.source_url and not confirm:
+        existing = JobAd.objects.filter(source_url=raw.source_url).first()
         if existing:
             raise WarningException(
                 "URL_ALREADY_USED",
                 f"Ad #{existing.id} came from this link but has different text. Save this one as a new ad?",
-                {"existing_id": existing.id, "source_url": source_url},
+                {"existing_id": existing.id, "source_url": raw.source_url},
             )
 
-    # Warning: allowed, but only after the user confirms.
-    length = len(normalise(raw_text))
+    # 5. Warning: allowed, but only after the user confirms.
+    length = len(normalise(raw.raw_text))
     if length < SHORT_AD_CHARS and not confirm:
         raise WarningException(
             "AD_TOO_SHORT",
@@ -99,28 +123,83 @@ def submit_ad(raw_text, source_url=None, confirm=False):
             {"chars": length, "min_chars": SHORT_AD_CHARS},
         )
 
-    # 1. Save the raw ad, status pending. The database is the source of truth.
+    # 6. Save the raw ad, status pending. The database is the source of truth.
     try:
         # atomic: if the INSERT fails, roll back just this step cleanly.
         with transaction.atomic():
             ad = JobAd.objects.create(
-                raw_text=raw_text, content_hash=content_hash, source_url=source_url, status="pending",
+                raw_text=raw.raw_text,
+                content_hash=content_hash,
+                source=raw.source,
+                source_url=raw.source_url,
+                source_external_id=raw.source_external_id,
+                expires_at=raw.expires_at,
+                status="pending",
             )
     except IntegrityError:
         # The second line of defence. Two identical submits at the same moment
-        # both passed the checks above; the unique constraint on content_hash
-        # let only one INSERT through. This one lost — return the winner.
+        # both passed the checks above; a unique constraint (content_hash, or
+        # source + external id) let only one INSERT through. This one lost —
+        # return the winner.
         existing = JobAd.objects.filter(content_hash=content_hash).first()
+        if existing is None and raw.source_external_id:
+            existing = find_by_external_id(raw.source, raw.source_external_id)
         if existing is None:
             raise  # some other constraint failed — not a duplicate, don't hide it
         logger.info("ad %s: duplicate caught by the database constraint", existing.id)
         return existing, False
-    logger.info("ad %s saved (%d chars)", ad.id, len(raw_text))  # ids only, never ad text
+    logger.info("ad %s saved from %s (%d chars)", ad.id, raw.source, len(raw.raw_text))  # ids only, never ad text
 
-    # 2. Hand ONLY the id to the queue — the ad itself is already in the database.
+    # 7. Hand ONLY the id to the queue — the ad itself is already in the database.
     enqueue_parse(ad.id)
     logger.info("ad %s queued", ad.id)
     return ad, True
+
+
+def find_by_external_id(source, external_id):
+    return JobAd.objects.filter(source=source, source_external_id=external_id).first()
+
+
+def ingest_one(adapter, confirm=False):
+    """Run a single-ad adapter (paste, one Platsbanken link) through ingest().
+
+    Returns (ad, created), like ingest().
+    """
+    # Known id before fetching (e.g. read from the link)? If we already have
+    # that ad, skip the network call — this also works after the ad has been
+    # taken down at the source, when fetching it would be a 404.
+    if adapter.external_id:
+        existing = find_by_external_id(adapter.source, adapter.external_id)
+        if existing:
+            return existing, False
+
+    [raw] = adapter.fetch()
+    return ingest(raw, confirm=confirm)
+
+
+def ingest_batch(adapter):
+    """Run a many-ads adapter (a JobTech search) through ingest().
+
+    One bad ad must not sink the batch: ads that fail a rule are skipped and
+    counted. There's no user to confirm warnings in a batch, so warned ads are
+    skipped too. Returns counts, e.g. {"created": 8, "duplicates": 2, "skipped": 0}.
+    """
+    counts = {"created": 0, "duplicates": 0, "skipped": 0}
+    for raw in adapter.fetch():
+        try:
+            _, created = ingest(raw)
+        except (ValidationError, WarningException) as error:
+            logger.info("skipped %s ad %s: %s", raw.source, raw.source_external_id, error.code)
+            counts["skipped"] += 1
+            continue
+        counts["created" if created else "duplicates"] += 1
+    logger.info("batch %s: %s", type(adapter).__name__, counts)
+    return counts
+
+
+def submit_ad(raw_text, source_url=None, confirm=False):
+    """Pasted text from the form — the paste adapter run through ingest()."""
+    return ingest_one(PasteAdapter(raw_text, source_url), confirm=confirm)
 
 
 def retry_ad(ad_id):

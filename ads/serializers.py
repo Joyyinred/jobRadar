@@ -1,18 +1,21 @@
 """
 The shape of data crossing the API boundary, in both directions:
 
-  in:   request JSON  -> clean Python values   (CreateAdSerializer)
-  out:  JobAd objects -> response JSON         (the other three)
+  in:   request JSON  -> clean Python values   (the *Serializer classes under "In")
+  out:  JobAd objects -> response JSON         (under "Out")
 
-Day 7: same output as before, just moved here from views.py. Validation rules
-(empty ad, max length...) come on Day 8 — this is where they'll go.
+Only checks that need nothing but the request itself live here. Rules about
+the ad (and anything needing the database) are in services.ingest(), which
+every source goes through — including imports that never touch a serializer.
 """
 from rest_framework import serializers
 
+# Defined once, in services (which applies it to EVERY source); the serializer
+# repeats the check only to give the web form a per-field error.
+from .services import MAX_AD_CHARS
+
 
 # --- In ----------------------------------------------------------------------
-
-MAX_AD_CHARS = 50_000
 
 
 class CreateAdSerializer(serializers.Serializer):
@@ -39,7 +42,27 @@ class CreateAdSerializer(serializers.Serializer):
         return value
 
     def validate_source_url(self, value):
-        return value or None  # "" -> None, so it never collides under the unique constraint
+        return value or None  # "" -> None: "no URL", so it never matches another ad's URL
+
+
+class PlatsbankenImportSerializer(serializers.Serializer):
+    """Body of POST /api/imports/platsbanken/: {"url": "https://arbetsformedlingen.se/platsbanken/annonser/31575359"}
+
+    Only "is there a string". Whether it's a Platsbanken AD link is the
+    adapter's call (PlatsbankenUrlAdapter) — it's the one that reads it.
+    """
+
+    url = serializers.CharField(max_length=500)
+    # Same as for pasting: the user saw a warning and said "import it anyway".
+    confirm = serializers.BooleanField(default=False)
+
+
+class JobTechSearchImportSerializer(serializers.Serializer):
+    """Body of POST /api/imports/jobtech-search/: {"query": "junior utvecklare", "limit": 20}"""
+
+    query = serializers.CharField(max_length=200)
+    # JobTech returns at most 100 per page; every ad imported is one LLM call.
+    limit = serializers.IntegerField(min_value=1, max_value=100, default=20)
 
 
 # --- Out ---------------------------------------------------------------------

@@ -1,0 +1,11 @@
+# Grafana reads this at start-up: "there is a Prometheus at http://prometheus:9090".
+# The fixed uid is what the dashboard JSON refers to.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true

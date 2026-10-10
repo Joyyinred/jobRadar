@@ -1,0 +1,11 @@
+# Grafana reads this at start-up: "load every dashboard JSON in this folder".
+# Dashboards live in git (monitoring/grafana/dashboards/), so a fresh
+# `docker compose up` shows the same graphs — no clicking them together by hand.
+apiVersion: 1
+
+providers:
+  - name: JobRadar
+    folder: JobRadar
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

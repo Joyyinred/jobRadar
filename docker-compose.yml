@@ -59,9 +59,13 @@ services:
     # Day 5: same image and code as web, different command. It never serves
     # HTTP — it just takes ad ids off the Redis queue and parses them.
     # --concurrency=4: up to 4 ads parsed at the same time.
+    # --pool=threads (Day 11): 4 threads in ONE process instead of 4 processes,
+    # so they share one set of metrics. Fine here: the worker mostly waits on
+    # the LLM's network reply, which threads handle well.
+    # Its metrics are on :9100 inside the compose network (Prometheus reads them).
     # (The hand-written version was: python manage.py run_worker)
     build: .
-    command: celery -A config worker --loglevel=info --concurrency=4
+    command: celery -A config worker --loglevel=info --concurrency=4 --pool=threads
     env_file:
       - .env
     environment:
@@ -79,5 +83,39 @@ services:
     volumes:
       - .:/app
 
+  prometheus:
+    # Day 11: collects the numbers. Every 15s it fetches /metrics from web and
+    # :9100 from the worker (monitoring/prometheus.yml) and stores them.
+    # Its own UI: http://localhost:9090
+    image: prom/prometheus:v3.5.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      - web
+      - worker
+
+  grafana:
+    # Day 11: draws the graphs. The data source and the JobRadar dashboard are
+    # loaded from monitoring/grafana/ at start-up — nothing to click together.
+    # http://localhost:3000 (local only: anonymous viewing on, admin/admin)
+    image: grafana/grafana:12.1.1
+    ports:
+      - "3000:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
 volumes:
   pgdata:
+  prometheus-data:
+  grafana-data:

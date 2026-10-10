@@ -1,0 +1,148 @@
+{
+  "uid": "jobradar",
+  "title": "JobRadar",
+  "description": "Day 11. Row 1: is everything alive? Row 2: is work flowing? Row 3: is it fast? Row 4: what does it cost? Row 5: the HTTP API and JobTech.",
+  "tags": ["jobradar"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "15s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Worker up",
+      "description": "1 = Prometheus reached the worker's :9100 on its last scrape. 0 = the worker is down (scenario 1).",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "up{job=\"worker\"}" } ],
+      "fieldConfig": { "defaults": {
+        "mappings": [ { "type": "value", "options": { "0": { "text": "DOWN" }, "1": { "text": "UP" } } } ],
+        "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] }
+      }, "overrides": [] },
+      "options": { "colorMode": "background", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 2, "type": "stat", "title": "Web up",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "up{job=\"web\"}" } ],
+      "fieldConfig": { "defaults": {
+        "mappings": [ { "type": "value", "options": { "0": { "text": "DOWN" }, "1": { "text": "UP" } } } ],
+        "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] }
+      }, "overrides": [] },
+      "options": { "colorMode": "background", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 3, "type": "stat", "title": "Queue depth (waiting now)",
+      "description": "Parse tasks in Redis not yet picked up. Growing while the worker is up = the worker can't keep up (scenario 2). Growing while it's down = scenario 1. -1 = Redis unreachable.",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "jobradar_queue_depth{job=\"web\"}" } ],
+      "fieldConfig": { "defaults": {
+        "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 20 }, { "color": "red", "value": 100 } ] }
+      }, "overrides": [] },
+      "options": { "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 4, "type": "stat", "title": "Parse success rate (last 1h)",
+      "description": "Completed / (completed + finally failed). Retries that later succeed don't count against it.",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "sum(increase(jobradar_parse_total{result=\"completed\"}[1h])) / sum(increase(jobradar_parse_total{result=~\"completed|failed\"}[1h]))" } ],
+      "fieldConfig": { "defaults": {
+        "unit": "percentunit", "min": 0, "max": 1,
+        "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "orange", "value": 0.9 }, { "color": "green", "value": 0.98 } ] }
+      }, "overrides": [] },
+      "options": { "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 5, "type": "stat", "title": "LLM tokens (last 24h)",
+      "description": "Input + output tokens of real DeepSeek calls — the bill (scenario 3). Mock calls use none.",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "sum(increase(jobradar_llm_tokens_total[24h]))" } ],
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "options": { "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+
+    {
+      "id": 6, "type": "timeseries", "title": "Ads in, by source and result (per 5 min)",
+      "description": "created = new ad queued; duplicate = already had it; warning = waiting for the user's confirm; invalid = rejected (empty / too long).",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "sum by (source, result) (increase(jobradar_ingest_total[5m]))", "legendFormat": "{{source}} {{result}}" } ],
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "bars", "stacking": { "mode": "normal" } } }, "overrides": [] }
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "Parse results (per 5 min)",
+      "description": "completed / retried (LLM failed, trying again) / failed (out of retries). A burst of retries = the LLM is struggling.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "sum by (result) (increase(jobradar_parse_total[5m]))", "legendFormat": "{{result}}" } ],
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "bars", "stacking": { "mode": "normal" } } }, "overrides": [] }
+    },
+
+    {
+      "id": 8, "type": "timeseries", "title": "LLM call time p50 / p95",
+      "description": "How long one LLM call takes. If this is high, DeepSeek is slow (scenario 2).",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.5, sum by (le) (rate(jobradar_llm_request_duration_seconds_bucket[5m])))", "legendFormat": "p50" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(jobradar_llm_request_duration_seconds_bucket[5m])))", "legendFormat": "p95" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
+    },
+    {
+      "id": 9, "type": "timeseries", "title": "Submit -> parsed p50 / p95 (what the user waits)",
+      "description": "Queue wait + LLM + retries. High here but normal LLM time = ads are waiting in the queue (scenario 2).",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.5, sum by (le) (rate(jobradar_ad_time_to_parsed_seconds_bucket[5m])))", "legendFormat": "p50" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(jobradar_ad_time_to_parsed_seconds_bucket[5m])))", "legendFormat": "p95" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
+    },
+
+    {
+      "id": 10, "type": "timeseries", "title": "LLM tokens per hour",
+      "description": "Where the bill comes from (scenario 3). A sudden jump = more ads, or the same ads parsed again and again.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "sum by (kind) (increase(jobradar_llm_tokens_total[1h]))", "legendFormat": "{{kind}}" } ],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "stacking": { "mode": "normal" } } }, "overrides": [] }
+    },
+    {
+      "id": 11, "type": "timeseries", "title": "LLM calls by result (per 5 min)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "sum by (mode, result) (increase(jobradar_llm_requests_total[5m]))", "legendFormat": "{{mode}} {{result}}" } ],
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "bars", "stacking": { "mode": "normal" } } }, "overrides": [] }
+    },
+
+    {
+      "id": 12, "type": "timeseries", "title": "API responses by status (per second)",
+      "description": "From django-prometheus. 4xx = client mistakes (validation, not found, warnings); 5xx = our bugs or JobTech down (502).",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 28 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "sum by (status) (rate(django_http_responses_total_by_status_view_method_total{view!=\"prometheus-django-metrics\"}[5m]))", "legendFormat": "{{status}}" } ],
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] }
+    },
+    {
+      "id": 13, "type": "timeseries", "title": "API p95 response time by endpoint",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 28 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le, view) (rate(django_http_requests_latency_seconds_by_view_method_bucket{view!=\"prometheus-django-metrics\"}[5m])))", "legendFormat": "{{view}}" } ],
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
+    },
+    {
+      "id": 14, "type": "timeseries", "title": "JobTech API calls by result (per 5 min)",
+      "description": "error = JobTech down or erroring (scenario 4); not_found = removed ads.",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 28 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [ { "refId": "A", "expr": "sum by (result) (increase(jobradar_jobtech_requests_total[5m]))", "legendFormat": "{{result}}" } ],
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "bars", "stacking": { "mode": "normal" } } }, "overrides": [] }
+    }
+  ]
+}

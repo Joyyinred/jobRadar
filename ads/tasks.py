@@ -18,7 +18,7 @@ import logging
 
 from celery import shared_task
 
-from . import services
+from . import metrics, services
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +41,7 @@ def parse_ad(self, ad_id):
             # time to recover instead of being hit again immediately.
             delay = 5 * 2 ** self.request.retries
             logger.warning("ad %s: LLM call failed, retrying in %ds", ad_id, delay)
+            metrics.PARSE.labels("retried").inc()
             # raise self.retry(...) puts the task back on the queue with a delay
             # and ends this attempt.
             raise self.retry(exc=exc, countdown=delay)
@@ -48,6 +49,8 @@ def parse_ad(self, ad_id):
         # Out of retries: full details to the log, a safe message to the user.
         logger.exception("ad %s: failed after %d attempts", ad_id, MAX_RETRIES + 1)
         services.mark_failed(ad)
+        metrics.PARSE.labels("failed").inc()
         return
 
     services.mark_completed(ad)
+    metrics.PARSE.labels("completed").inc()

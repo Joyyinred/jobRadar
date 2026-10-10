@@ -23,12 +23,17 @@ INSTALLED_APPS = [
     "django.contrib.auth",          # contenttypes depends on it
     "django.contrib.staticfiles",
     "rest_framework",
+    "django_prometheus",            # Day 11: /metrics + automatic HTTP metrics
     "ads",
 ]
 
 MIDDLEWARE = [
+    # Day 11: Before/After wrap everything else, so the timing covers the whole
+    # request. They record request counts, latency and status codes per view.
+    "django_prometheus.middleware.PrometheusBeforeMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
+    "django_prometheus.middleware.PrometheusAfterMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"

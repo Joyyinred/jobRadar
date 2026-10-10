@@ -12,6 +12,8 @@ import time
 
 import anthropic
 
+from . import metrics
+
 # __name__ is "ads.llm", so it inherits the "ads" logger from settings.LOGGING.
 logger = logging.getLogger(__name__)
 
@@ -69,7 +71,25 @@ def call_llm(raw_text):
 
     Raises on any failure (network, bad key, non-JSON answer) — the caller
     decides what to do with that.
+
+    Day 11: this wrapper times every call and counts successes and failures;
+    the call itself is _call_llm().
     """
+    mode = "mock" if os.environ.get("LLM_MODE", "real") == "mock" else "real"
+    started = time.perf_counter()
+    try:
+        result = _call_llm(raw_text)
+    except Exception:
+        metrics.LLM_REQUESTS.labels(mode, "failure").inc()
+        raise
+    finally:
+        # Every call, success or not: a slow failure is still slow.
+        metrics.LLM_DURATION.labels(mode).observe(time.perf_counter() - started)
+    metrics.LLM_REQUESTS.labels(mode, "success").inc()
+    return result
+
+
+def _call_llm(raw_text):
     # Day 4 experiment: pretend DeepSeek is having a slow day.
     # Set LLM_FAKE_DELAY=15 in .env to add 15 seconds to every call. Unset = 0.
     fake_delay = float(os.environ.get("LLM_FAKE_DELAY", "0"))
@@ -107,6 +127,11 @@ def call_llm(raw_text):
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": raw_text}],
     )
+    # What this call costs. Recorded before parsing: tokens are billed even
+    # when the answer turns out not to be valid JSON.
+    metrics.LLM_TOKENS.labels("input").inc(message.usage.input_tokens)
+    metrics.LLM_TOKENS.labels("output").inc(message.usage.output_tokens)
+
     # The reply is a list of blocks. With thinking on, a "thinking" block comes
     # before the "text" answer; filtering by type works either way.
     texts = [block.text for block in message.content if block.type == "text"]

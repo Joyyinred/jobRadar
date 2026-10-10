@@ -13,9 +13,11 @@ import logging
 import re
 
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 
 from .adapters import PasteAdapter
 from .exceptions import BlockError, NotFoundError, ValidationError, WarningException
+from . import metrics
 from .llm import call_llm
 from .models import AdSkill, Company, JobAd, Skill
 
@@ -63,6 +65,24 @@ def content_hash_of(raw_text):
 
 
 def ingest(raw, confirm=False):
+    """_ingest() plus counting the outcome for monitoring (Day 11).
+
+    Counting lives in this thin wrapper so the rules in _ingest() don't need
+    a metrics line before every return and raise.
+    """
+    try:
+        ad, created = _ingest(raw, confirm)
+    except WarningException:
+        metrics.INGEST.labels(raw.source, "warning").inc()
+        raise
+    except ValidationError:
+        metrics.INGEST.labels(raw.source, "invalid").inc()
+        raise
+    metrics.INGEST.labels(raw.source, "created" if created else "duplicate").inc()
+    return ad, created
+
+
+def _ingest(raw, confirm=False):
     """Store one RawJobAd as a pending ad and queue it for parsing.
 
     The ONLY place a JobAd is created from outside data — whichever adapter
@@ -171,6 +191,7 @@ def ingest_one(adapter, confirm=False):
     if adapter.external_id:
         existing = find_by_external_id(adapter.source, adapter.external_id)
         if existing:
+            metrics.INGEST.labels(adapter.source, "duplicate").inc()
             return existing, False
 
     [raw] = adapter.fetch()
@@ -266,6 +287,9 @@ def parse_and_save(ad):
 def mark_completed(ad):
     ad.status = "completed"
     ad.save()
+    # Saved -> parsed, including time in the queue and any retries: what the
+    # user actually waited, not just the LLM call.
+    metrics.AD_PARSE_SECONDS.observe((timezone.now() - ad.created_at).total_seconds())
     logger.info("ad %s: completed", ad.id)
 
 

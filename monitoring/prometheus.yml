@@ -1,0 +1,20 @@
+# Prometheus: where to fetch numbers from, and how often.
+#
+# Prometheus PULLS: every scrape_interval it requests each target's metrics
+# page. If a target doesn't answer, its `up` metric becomes 0 — which is
+# itself the "is the worker alive?" signal.
+
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  # Django: HTTP metrics (django-prometheus) + ingest, JobTech, queue depth.
+  - job_name: web
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["web:8000"]   # compose service name, not localhost
+
+  # Celery worker: LLM calls, tokens, parse results (config/celery.py, :9100).
+  - job_name: worker
+    static_configs:
+      - targets: ["worker:9100"]

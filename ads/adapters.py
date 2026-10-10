@@ -22,6 +22,7 @@ import requests
 from django.utils.dateparse import parse_datetime
 from django.utils.timezone import is_naive, make_aware
 
+from . import metrics
 from .exceptions import NotFoundError, UpstreamError, ValidationError
 
 
@@ -94,6 +95,7 @@ class JobTechClient:
         response = self._get(f"/ad/{external_id}")
         if response.status_code == 404:
             # JobTech answers 404 both for removed ads and for ids that never existed.
+            metrics.JOBTECH_REQUESTS.labels("not_found").inc()
             raise NotFoundError(
                 "AD_NOT_ON_PLATSBANKEN",
                 "That ad is no longer on Platsbanken (or never was).",
@@ -133,14 +135,17 @@ class JobTechClient:
             return requests.get(self.BASE_URL + path, params=params, timeout=self.TIMEOUT_SECONDS)
         except requests.RequestException:
             # Down, slow, DNS... not the user's fault and not ours: 502.
+            metrics.JOBTECH_REQUESTS.labels("error").inc()
             raise UpstreamError("JOBTECH_UNAVAILABLE", "Could not reach Platsbanken. Try again later.")
 
     def _json(self, response):
         if response.status_code != 200:
+            metrics.JOBTECH_REQUESTS.labels("error").inc()
             raise UpstreamError(
                 "JOBTECH_UNAVAILABLE", "Platsbanken returned an error. Try again later.",
                 {"status": response.status_code},
             )
+        metrics.JOBTECH_REQUESTS.labels("ok").inc()
         return response.json()
 
 

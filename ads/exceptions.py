@@ -66,6 +66,15 @@ class BlockError(BaseAppException):
     http_status = http_status.HTTP_409_CONFLICT
 
 
+class InsufficientDataError(BaseAppException):
+    """Too few data points for the statistic asked for — refused rather than
+    reporting a meaningless percentage. 422: the request is well-formed, but
+    can't be answered with the data there is."""
+
+    type = "insufficient_data"
+    http_status = http_status.HTTP_422_UNPROCESSABLE_ENTITY
+
+
 class UpstreamError(BaseAppException):
     """A service we depend on (e.g. the JobTech API) failed or timed out.
     Not the user's fault and not ours: 502 Bad Gateway. Trying later may work."""

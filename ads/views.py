@@ -13,13 +13,14 @@ from rest_framework import status as http_status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from . import services
-from .adapters import JobTechSearchAdapter, PlatsbankenUrlAdapter
+from . import market, services
+from .adapters import DATA_IT_FIELD, JobTechSearchAdapter, PlatsbankenUrlAdapter
 from .serializers import (
     AdDetailSerializer,
     AdSummarySerializer,
     CreateAdSerializer,
     JobTechSearchImportSerializer,
+    MarketSkillsQuerySerializer,
     PlatsbankenImportSerializer,
 )
 
@@ -102,7 +103,7 @@ def import_platsbanken(request):
 
 @api_view(["POST"])
 def import_jobtech_search(request):
-    """POST /api/imports/jobtech-search/   body: {"query": "junior utvecklare", "limit": 20}
+    """POST /api/imports/jobtech-search/   body: {"query": "...", "limit": 20, "data_it_only": false}
 
     Answers with counts; the new ads are queued and show up in the list.
     """
@@ -110,5 +111,31 @@ def import_jobtech_search(request):
     serializer.is_valid(raise_exception=True)
     data = serializer.validated_data
 
-    counts = services.ingest_batch(JobTechSearchAdapter(data["query"], data["limit"]))
+    adapter = JobTechSearchAdapter(
+        data["query"], data["limit"],
+        occupation_field=DATA_IT_FIELD if data["data_it_only"] else None,
+    )
+    counts = services.ingest_batch(adapter)
     return Response(counts, status=http_status.HTTP_200_OK)
+
+
+# --- Market statistics -----------------------------------------------------------
+
+@api_view(["GET"])
+def market_skills(request):
+    """GET /api/market/skills/?seniority=junior&seniority=intern&level=required&top=20
+
+    Fewer than market.MIN_SAMPLE matching ads -> 422 (via the handler).
+    """
+    # A query string can repeat a key (?seniority=junior&seniority=intern);
+    # getlist() keeps every value, plain .get() would keep only the last.
+    params = {**request.query_params.dict(), "seniority": request.query_params.getlist("seniority")}
+    if not params["seniority"]:
+        del params["seniority"]
+    serializer = MarketSkillsQuerySerializer(data=params)
+    serializer.is_valid(raise_exception=True)
+    data = serializer.validated_data
+
+    return Response(market.skill_frequency(
+        seniority=data.get("seniority"), level=data.get("level"), top=data["top"],
+    ))

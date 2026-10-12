@@ -58,11 +58,34 @@ class PlatsbankenImportSerializer(serializers.Serializer):
 
 
 class JobTechSearchImportSerializer(serializers.Serializer):
-    """Body of POST /api/imports/jobtech-search/: {"query": "junior utvecklare", "limit": 20}"""
+    """Body of POST /api/imports/jobtech-search/:
+    {"query": "junior utvecklare", "limit": 20, "data_it_only": false}
 
-    query = serializers.CharField(max_length=200)
+    At least one of query / data_it_only. With data_it_only and no query:
+    the newest Data/IT ads, whatever they say — the unbiased sample for
+    market statistics.
+    """
+
+    query = serializers.CharField(max_length=200, required=False, allow_blank=True, default="")
     # JobTech returns at most 100 per page; every ad imported is one LLM call.
     limit = serializers.IntegerField(min_value=1, max_value=100, default=20)
+    data_it_only = serializers.BooleanField(default=False)
+
+    def validate(self, data):
+        if not data["query"].strip() and not data["data_it_only"]:
+            raise serializers.ValidationError("Give a search query, or set data_it_only.")
+        return data
+
+
+class MarketSkillsQuerySerializer(serializers.Serializer):
+    """Query string of GET /api/market/skills/?seniority=junior&seniority=intern&level=required&top=20"""
+
+    seniority = serializers.ListField(
+        child=serializers.ChoiceField(choices=["intern", "junior", "mid", "senior", "unspecified"]),
+        required=False,
+    )
+    level = serializers.ChoiceField(choices=["required", "nice_to_have"], required=False)
+    top = serializers.IntegerField(min_value=1, max_value=100, default=20)
 
 
 # --- Out ---------------------------------------------------------------------

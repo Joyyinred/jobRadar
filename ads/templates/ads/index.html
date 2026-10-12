@@ -33,8 +33,9 @@
     <button id="import_link">Import link</button>
   </p>
   <p>
-    <input id="search_query" placeholder="Search Platsbanken, e.g. junior utvecklare" style="width: 55%; font: inherit;">
+    <input id="search_query" placeholder="Search Platsbanken (empty + Data/IT = newest Data/IT ads)" style="width: 55%; font: inherit;">
     <input id="search_limit" type="number" min="1" max="100" value="10" style="width: 4rem; font: inherit;">
+    <label><input id="search_data_it" type="checkbox" checked> Data/IT only</label>
     <button id="import_search">Import search results</button>
   </p>
 
@@ -78,6 +79,7 @@
     document.getElementById("import_search").addEventListener("click", () => importSearch({
       query: document.getElementById("search_query").value,
       limit: Number(document.getElementById("search_limit").value),
+      data_it_only: document.getElementById("search_data_it").checked,
     }));
 
     // POST a body, return {response, data} — or null if the server couldn't be
@@ -152,10 +154,41 @@
         showError(data);
         return;
       }
-      statusEl.textContent = "Imported:";
-      resultEl.textContent =
-        `${data.created} new (parsing in the background), ${data.duplicates} already here, ${data.skipped} skipped.`;
-      loadList();  // the new ads appear as pending; refresh the list to see them finish
+      // 202: the import runs in the background now. Same idea as an ad's
+      // parse (Day 6): ask every 2 seconds how far it got.
+      pollImport(data.id, body.limit);
+    }
+
+    // GET /api/imports/<id>/ until the job is completed or failed.
+    async function pollImport(id, limit) {
+      const show = (job) => {
+        resultEl.textContent =
+          `Fetched ${job.fetched} of up to ${limit} from Platsbanken: ` +
+          `${job.created} new (parsing in the background), ${job.duplicates} already here, ${job.skipped} skipped.`;
+      };
+      for (let attempt = 1; attempt <= 150; attempt++) {  // 150 x 2s = 5 minutes
+        await sleep(2000);
+        let job;
+        try {
+          job = await (await fetch(`/api/imports/${id}/`, { headers: { Accept: "application/json" } })).json();
+        } catch (err) {
+          continue;  // a blip — just ask again next round
+        }
+        show(job);
+        if (job.status === "completed") {
+          statusEl.textContent = `Import #${id} done:`;
+          loadList();
+          return;
+        }
+        if (job.status === "failed") {
+          statusEl.textContent = `Import #${id} failed — ${job.error}`;
+          loadList();  // whatever got imported before the failure is there
+          return;
+        }
+        statusEl.textContent = `Import #${id}: ${job.status}...`;
+        if (job.created) loadList();  // new ads appear in the list as they come in
+      }
+      statusEl.textContent = `Import #${id}: still running after 5 minutes. Refresh later to check.`;
     }
 
     // ---- Day 8: the one error handler --------------------------------------

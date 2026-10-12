@@ -11,7 +11,8 @@ urlpatterns = [
     path("ads/<int:ad_id>/retry/", views.retry_ad),  # POST: re-queue a failed parse
     # Day 9: other sources. Each runs an adapter through the same services.ingest().
     path("imports/platsbanken/", views.import_platsbanken),       # POST {"url": ...}
-    path("imports/jobtech-search/", views.import_jobtech_search),  # POST {"query": ..., "limit": ...}
+    path("imports/jobtech-search/", views.import_jobtech_search),  # POST -> 202, runs in the background
+    path("imports/<int:job_id>/", views.get_import),               # GET: that import's progress
     # Market statistics over the collected ads.
     path("market/skills/", views.market_skills),  # GET ?seniority=junior&level=required
 ]

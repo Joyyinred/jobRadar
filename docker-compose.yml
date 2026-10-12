@@ -64,11 +64,25 @@ services:
     # the LLM's network reply, which threads handle well.
     # Its metrics are on :9100 inside the compose network (Prometheus reads them).
     # (The hand-written version was: python manage.py run_worker)
+    #
+    # watchfiles (development only): restarts Celery whenever a .py file under
+    # ads/ or config/ changes — like runserver does for web. Otherwise the
+    # worker keeps running old code until someone remembers
+    # `docker compose restart worker` (and new tasks show up as "unregistered").
+    # --sigint-timeout 20: on a change, Celery is asked to stop politely and
+    # gets up to 20s to finish the parses it's in the middle of.
     build: .
-    command: celery -A config worker --loglevel=info --concurrency=4 --pool=threads
+    command: >-
+      watchfiles --filter python --sigint-timeout 20
+      "celery -A config worker --loglevel=info --concurrency=4 --pool=threads"
+      ads config
     env_file:
       - .env
     environment:
+      # The code lives on Windows and is mounted into this Linux container;
+      # file-change notifications don't cross that boundary, so poll for
+      # changes instead (what runserver's reloader does too).
+      WATCHFILES_FORCE_POLLING: "true"
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
       POSTGRES_DB: jobradar

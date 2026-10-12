@@ -60,6 +60,14 @@ class JobAdAdapter(ABC):
     def fetch(self) -> list[RawJobAd]:
         """Go to the source and return its ads in the internal format."""
 
+    def pages(self):
+        """The same ads, one page at a time (a generator of lists).
+
+        Lets a long import report progress page by page. By default the whole
+        result is one page; adapters that fetch in pages override it.
+        """
+        yield self.fetch()
+
 
 # --- Source 1: pasted text ------------------------------------------------------
 
@@ -213,14 +221,17 @@ class JobTechSearchAdapter(JobAdAdapter):
 
     PAGE_SIZE = 20  # small pages: big ones are slow enough to time out (see JobTechClient.search)
 
-    def fetch(self):
-        hits = []
-        while len(hits) < self.limit:
-            want = min(self.PAGE_SIZE, self.limit - len(hits))
+    def pages(self):
+        fetched = 0
+        while fetched < self.limit:
+            want = min(self.PAGE_SIZE, self.limit - fetched)
             page = self.client.search(
-                self.query, want, offset=len(hits), occupation_field=self.occupation_field,
+                self.query, want, offset=fetched, occupation_field=self.occupation_field,
             )
-            hits.extend(page)
+            fetched += len(page)
+            yield [self.client.to_raw(ad) for ad in page]
             if len(page) < want:
-                break  # JobTech has no more results
-        return [self.client.to_raw(ad) for ad in hits]
+                return  # JobTech has no more results
+
+    def fetch(self):
+        return [raw for page in self.pages() for raw in page]

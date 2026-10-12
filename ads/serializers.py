@@ -152,3 +152,20 @@ class AdDetailSerializer(serializers.Serializer):
         elif ad.status == "failed":
             body["error"] = ad.error
         return body
+
+
+class ImportJobSerializer(serializers.ModelSerializer):
+    """A background import and its progress — GET /api/imports/<id>/.
+
+    ModelSerializer: the JSON is just the table's columns, so DRF can build
+    the fields from the model (unlike AdResultSerializer, which gathers four tables).
+    """
+
+    class Meta:
+        from .models import ImportJob
+
+        model = ImportJob
+        fields = [
+            "id", "status", "params", "fetched", "created", "duplicates", "skipped",
+            "error", "created_at", "finished_at",
+        ]

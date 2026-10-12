@@ -61,7 +61,7 @@ def fake_jobtech(monkeypatch):
         status = 200
         calls = []
 
-    def fake_get(self, path, params=None):
+    def fake_get(self, path, params=None, timeout=None):
         Fake.calls.append(path)
         if Fake.status != 200:
             return FakeResponse(Fake.status)
@@ -257,3 +257,49 @@ def test_search_import_returns_counts(api, enqueued, fake_jobtech):
 @pytest.mark.parametrize("limit", [0, 101])
 def test_search_import_limit_must_be_1_to_100(api, limit):
     assert_error(api.post(SEARCH, {"query": "java", "limit": limit}, format="json"), 400, "validation", "INVALID_INPUT")
+
+
+@pytestmark_db
+def test_data_it_import_searches_the_field_newest_first(api, enqueued, monkeypatch):
+    sent = {}
+
+    def fake_get(self, path, params=None, timeout=None):
+        sent.update(params or {})
+        return FakeResponse(200, {"hits": []})
+
+    monkeypatch.setattr(JobTechClient, "_get", fake_get)
+    response = api.post(SEARCH, {"data_it_only": True, "limit": 100}, format="json")
+    assert response.status_code == 200
+    # First page of 20; JobTech returned nothing, so no further pages. No "q".
+    assert sent == {"limit": 20, "offset": 0, "sort": "pubdate-desc", "occupation-field": "apaJ_2ja_LuF"}
+
+
+def test_search_is_fetched_in_pages_until_the_limit():
+    """limit=45 -> pages of 20, 20, 5 at offsets 0, 20, 40."""
+    asked = []
+
+    class PagingClient(JobTechClient):
+        def search(self, query, limit, offset=0, occupation_field=None):
+            asked.append((offset, limit))
+            return [jobtech_ad(ad_id=offset + i, text=f"{LONG_AD} {offset + i}") for i in range(limit)]
+
+    raws = JobTechSearchAdapter("java", 45, client=PagingClient()).fetch()
+    assert asked == [(0, 20), (20, 20), (40, 5)]
+    assert len({r.source_external_id for r in raws}) == 45
+
+
+def test_search_stops_when_jobtech_runs_out():
+    asked = []
+
+    class ShortClient(JobTechClient):
+        def search(self, query, limit, offset=0, occupation_field=None):
+            asked.append(offset)
+            return [jobtech_ad(ad_id=i) for i in range(7)] if offset == 0 else []
+
+    assert len(JobTechSearchAdapter("java", 100, client=ShortClient()).fetch()) == 7
+    assert asked == [0]  # 7 < 20 asked for: no second page
+
+
+@pytestmark_db
+def test_search_import_needs_a_query_or_data_it_only(api):
+    assert_error(api.post(SEARCH, {"limit": 10}, format="json"), 400, "validation", "INVALID_INPUT")

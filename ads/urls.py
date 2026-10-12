@@ -12,4 +12,6 @@ urlpatterns = [
     # Day 9: other sources. Each runs an adapter through the same services.ingest().
     path("imports/platsbanken/", views.import_platsbanken),       # POST {"url": ...}
     path("imports/jobtech-search/", views.import_jobtech_search),  # POST {"query": ..., "limit": ...}
+    # Market statistics over the collected ads.
+    path("market/skills/", views.market_skills),  # GET ?seniority=junior&level=required
 ]

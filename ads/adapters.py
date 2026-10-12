@@ -88,7 +88,8 @@ class JobTechClient:
     """
 
     BASE_URL = "https://jobsearch.api.jobtechdev.se"
-    TIMEOUT_SECONDS = 10
+    TIMEOUT_SECONDS = 10         # one ad
+    SEARCH_TIMEOUT_SECONDS = 30  # a page of search results is much bigger and slower
 
     def get_ad(self, external_id):
         """One ad by id. NotFoundError if Platsbanken doesn't have it (any more)."""
@@ -103,9 +104,18 @@ class JobTechClient:
             )
         return self._json(response)
 
-    def search(self, query, limit):
-        """One page of search results (JobTech allows up to 100 per page)."""
-        response = self._get("/search", params={"q": query, "limit": limit})
+    def search(self, query, limit, offset=0, occupation_field=None):
+        """One page of search results, newest first, starting at `offset`.
+
+        Keep `limit` small: on 2026-10-10 a page of 10 full ads took ~2s, a
+        page of 100 took ~60s (1.2 MB). JobTechSearchAdapter pages for you.
+        """
+        params = {"limit": limit, "offset": offset, "sort": "pubdate-desc"}
+        if query:
+            params["q"] = query
+        if occupation_field:
+            params["occupation-field"] = occupation_field
+        response = self._get("/search", params=params, timeout=self.SEARCH_TIMEOUT_SECONDS)
         return self._json(response).get("hits", [])
 
     def to_raw(self, ad):
@@ -130,9 +140,9 @@ class JobTechClient:
             expires_at=_aware(ad.get("last_publication_date")),
         )
 
-    def _get(self, path, params=None):
+    def _get(self, path, params=None, timeout=None):
         try:
-            return requests.get(self.BASE_URL + path, params=params, timeout=self.TIMEOUT_SECONDS)
+            return requests.get(self.BASE_URL + path, params=params, timeout=timeout or self.TIMEOUT_SECONDS)
         except requests.RequestException:
             # Down, slow, DNS... not the user's fault and not ours: 502.
             metrics.JOBTECH_REQUESTS.labels("error").inc()
@@ -183,15 +193,34 @@ class PlatsbankenUrlAdapter(JobAdAdapter):
 
 # --- Source 3: a JobTech search -------------------------------------------------
 
+# JobTech's occupation-field code for "Data/IT" (from its taxonomy). Searching
+# by field catches ads a keyword misses: on 2026-10-05, q="junior" in Data/IT
+# found 60 ads, while Data/IT had 2,771.
+DATA_IT_FIELD = "apaJ_2ja_LuF"
+
+
 class JobTechSearchAdapter(JobAdAdapter):
-    """Many ads at once: one page of a JobTech free-text search."""
+    """Many ads at once: one page (newest first) of a JobTech search, by
+    free text and/or occupation field."""
 
     source = "jobtech_api"
 
-    def __init__(self, query, limit=20, client=None):
+    def __init__(self, query="", limit=20, occupation_field=None, client=None):
         self.query = query
         self.limit = limit
+        self.occupation_field = occupation_field
         self.client = client or JobTechClient()
 
+    PAGE_SIZE = 20  # small pages: big ones are slow enough to time out (see JobTechClient.search)
+
     def fetch(self):
-        return [self.client.to_raw(ad) for ad in self.client.search(self.query, self.limit)]
+        hits = []
+        while len(hits) < self.limit:
+            want = min(self.PAGE_SIZE, self.limit - len(hits))
+            page = self.client.search(
+                self.query, want, offset=len(hits), occupation_field=self.occupation_field,
+            )
+            hits.extend(page)
+            if len(page) < want:
+                break  # JobTech has no more results
+        return [self.client.to_raw(ad) for ad in hits]

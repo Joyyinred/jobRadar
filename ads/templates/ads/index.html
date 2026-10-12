@@ -11,6 +11,10 @@
     table { border-collapse: collapse; margin-top: 1rem; }
     td { border: 1px solid #ccc; padding: .4rem .8rem; vertical-align: top; }
     td:first-child { font-weight: bold; }
+    /* Market table: a bar per skill, its width = share of ads. */
+    #market-table td:first-child { font-weight: normal; }
+    .bar { background: #4a7bd0; height: .8rem; border-radius: 2px; }
+    .note { color: #666; font-size: .85rem; }
   </style>
 </head>
 <body>
@@ -36,6 +40,22 @@
 
   <div id="status"></div>
   <div id="result"></div>
+
+  <h2>Market</h2>
+  <p>
+    <select id="market_seniority" style="font: inherit;">
+      <option value="junior,intern">Junior + intern</option>
+      <option value="">All seniorities</option>
+      <option value="mid,senior">Mid + senior</option>
+    </select>
+    <select id="market_level" style="font: inherit;">
+      <option value="">Required or nice-to-have</option>
+      <option value="required">Required only</option>
+      <option value="nice_to_have">Nice-to-have only</option>
+    </select>
+    <button id="show_market">Show</button>
+  </p>
+  <div id="market"></div>
 
   <h2>Your ads</h2>
   <ul id="ad-list"></ul>
@@ -257,6 +277,68 @@
     }
 
     loadList();  // fill the list as soon as the page opens
+
+    // ---- Market statistics: GET /api/market/skills/ ----------------------------
+    const marketEl = document.getElementById("market");
+    document.getElementById("show_market").addEventListener("click", loadMarket);
+
+    async function loadMarket() {
+      const params = new URLSearchParams({ top: "20" });
+      // "junior,intern" -> ?seniority=junior&seniority=intern
+      for (const s of document.getElementById("market_seniority").value.split(",").filter(Boolean)) {
+        params.append("seniority", s);
+      }
+      const level = document.getElementById("market_level").value;
+      if (level) params.append("level", level);
+
+      marketEl.textContent = "Loading...";
+      let response, data;
+      try {
+        response = await fetch(`/api/market/skills/?${params}`, { headers: { Accept: "application/json" } });
+        data = await response.json();
+      } catch (err) {
+        marketEl.textContent = "Could not reach the server. Please try again.";
+        return;
+      }
+      // 422 = too few ads for this filter: say so instead of showing percentages.
+      if (!response.ok) {
+        marketEl.textContent = data.message;
+        return;
+      }
+
+      marketEl.innerHTML = "";
+      const pct = (share) => `${(share * 100).toFixed(1)}%`;
+
+      const summary = document.createElement("p");
+      const sw = data.swedish_requirement;
+      summary.textContent =
+        `${data.sample_size} ads. Swedish required in ${pct(sw.required)}, ` +
+        `preferred in ${pct(sw.preferred)}, not mentioned in ${pct(sw.not_mentioned)}.`;
+      marketEl.appendChild(summary);
+
+      const table = document.createElement("table");
+      table.id = "market-table";
+      const head = table.createTHead().insertRow();
+      for (const title of ["Skill", "Share of ads", "", "Required / nice-to-have"]) {
+        head.appendChild(document.createElement("th")).textContent = title;
+      }
+      for (const skill of data.skills) {
+        const row = table.insertRow();
+        row.insertCell().textContent = skill.name;  // textContent: skill names come from ads
+        row.insertCell().textContent = `${pct(skill.share)} (${skill.ads})`;
+        const bar = document.createElement("div");
+        bar.className = "bar";
+        bar.style.width = `${Math.max(skill.share * 200, 2)}px`;
+        row.insertCell().appendChild(bar);
+        row.insertCell().textContent = `${skill.required} / ${skill.nice_to_have}`;
+      }
+      marketEl.appendChild(table);
+
+      const note = document.createElement("p");
+      note.className = "note";
+      note.textContent = data.note;
+      marketEl.appendChild(note);
+    }
 
     function showResult(result) {
       const table = document.createElement("table");

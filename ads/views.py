@@ -14,11 +14,12 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from . import market, services
-from .adapters import DATA_IT_FIELD, JobTechSearchAdapter, PlatsbankenUrlAdapter
+from .adapters import PlatsbankenUrlAdapter
 from .serializers import (
     AdDetailSerializer,
     AdSummarySerializer,
     CreateAdSerializer,
+    ImportJobSerializer,
     JobTechSearchImportSerializer,
     MarketSkillsQuerySerializer,
     PlatsbankenImportSerializer,
@@ -105,18 +106,21 @@ def import_platsbanken(request):
 def import_jobtech_search(request):
     """POST /api/imports/jobtech-search/   body: {"query": "...", "limit": 20, "data_it_only": false}
 
-    Answers with counts; the new ads are queued and show up in the list.
+    Doesn't wait for the import (it can take a minute): records it, queues it
+    for a worker, and answers 202 with the job. Poll GET /api/imports/<id>/.
     """
     serializer = JobTechSearchImportSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
-    data = serializer.validated_data
 
-    adapter = JobTechSearchAdapter(
-        data["query"], data["limit"],
-        occupation_field=DATA_IT_FIELD if data["data_it_only"] else None,
-    )
-    counts = services.ingest_batch(adapter)
-    return Response(counts, status=http_status.HTTP_200_OK)
+    job = services.start_jobtech_import(serializer.validated_data)
+    return Response(ImportJobSerializer(job).data, status=http_status.HTTP_202_ACCEPTED)
+
+
+@api_view(["GET"])
+def get_import(request, job_id):
+    """GET /api/imports/<job_id>/ — a background import's status and progress."""
+    job = services.get_import(job_id)  # missing -> 404, via the handler
+    return Response(ImportJobSerializer(job).data)
 
 
 # --- Market statistics -----------------------------------------------------------

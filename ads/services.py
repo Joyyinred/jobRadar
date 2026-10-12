@@ -15,11 +15,11 @@ import re
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from .adapters import PasteAdapter
-from .exceptions import BlockError, NotFoundError, ValidationError, WarningException
+from .adapters import DATA_IT_FIELD, JobTechSearchAdapter, PasteAdapter
+from .exceptions import BlockError, NotFoundError, UpstreamError, ValidationError, WarningException
 from . import metrics
 from .llm import call_llm
-from .models import AdSkill, Company, JobAd, Skill
+from .models import AdSkill, Company, ImportJob, JobAd, Skill
 
 # __name__ is "ads.services", so it inherits the "ads" logger from settings.LOGGING.
 logger = logging.getLogger(__name__)
@@ -198,24 +198,95 @@ def ingest_one(adapter, confirm=False):
     return ingest(raw, confirm=confirm)
 
 
-def ingest_batch(adapter):
-    """Run a many-ads adapter (a JobTech search) through ingest().
+def ingest_batch(adapter, on_page=None):
+    """Run a many-ads adapter (a JobTech search) through ingest(), page by page.
 
     One bad ad must not sink the batch: ads that fail a rule are skipped and
     counted. There's no user to confirm warnings in a batch, so warned ads are
     skipped too. Returns counts, e.g. {"created": 8, "duplicates": 2, "skipped": 0}.
+
+    on_page(fetched, counts), if given, is called after every page — that's
+    how a background import reports its progress.
     """
     counts = {"created": 0, "duplicates": 0, "skipped": 0}
-    for raw in adapter.fetch():
-        try:
-            _, created = ingest(raw)
-        except (ValidationError, WarningException) as error:
-            logger.info("skipped %s ad %s: %s", raw.source, raw.source_external_id, error.code)
-            counts["skipped"] += 1
-            continue
-        counts["created" if created else "duplicates"] += 1
+    fetched = 0
+    for page in adapter.pages():
+        fetched += len(page)
+        for raw in page:
+            try:
+                _, created = ingest(raw)
+            except (ValidationError, WarningException) as error:
+                logger.info("skipped %s ad %s: %s", raw.source, raw.source_external_id, error.code)
+                counts["skipped"] += 1
+                continue
+            counts["created" if created else "duplicates"] += 1
+        if on_page:
+            on_page(fetched, counts)
     logger.info("batch %s: %s", type(adapter).__name__, counts)
     return counts
+
+
+# --- Bulk imports in the background -------------------------------------------
+#
+# A JobTech search import can take a minute (pages of results, each a network
+# call), too long for a web request — the same lesson as parsing on Day 4. So
+# the web side only records an ImportJob and queues it; a worker runs it.
+
+def start_jobtech_import(params):
+    """Record an import and queue it. Returns the ImportJob (status pending).
+
+    params: the validated request body — {"query", "limit", "data_it_only"}.
+    """
+    job = ImportJob.objects.create(params=params)
+    enqueue_import(job.id)
+    logger.info("import %s queued: %s", job.id, params)
+    return job
+
+
+def get_import(job_id):
+    """One ImportJob. Raises NotFoundError (-> 404) if there is no such id."""
+    try:
+        return ImportJob.objects.get(id=job_id)
+    except ImportJob.DoesNotExist:
+        raise NotFoundError("IMPORT_NOT_FOUND", f"Import {job_id} not found", {"id": job_id})
+
+
+def run_jobtech_import(job_id):
+    """The worker side: run one ImportJob, saving progress after every page."""
+    try:
+        job = ImportJob.objects.get(id=job_id)
+    except ImportJob.DoesNotExist:
+        logger.warning("import %s: task received but not in the database, skipping", job_id)
+        return
+    job.status = "running"
+    job.save(update_fields=["status"])
+
+    params = job.params
+    adapter = JobTechSearchAdapter(
+        params.get("query", ""), params["limit"],
+        occupation_field=DATA_IT_FIELD if params.get("data_it_only") else None,
+    )
+
+    def save_progress(fetched, counts):
+        job.fetched = fetched
+        job.created, job.duplicates, job.skipped = counts["created"], counts["duplicates"], counts["skipped"]
+        job.save(update_fields=["fetched", "created", "duplicates", "skipped"])
+
+    try:
+        ingest_batch(adapter, on_page=save_progress)
+        job.status = "completed"
+    except UpstreamError as error:
+        # JobTech down or erroring mid-way. Whatever was imported stays (and
+        # re-running is safe: ingest() is idempotent).
+        logger.warning("import %s: JobTech failed: %s", job_id, error.code)
+        job.status, job.error = "failed", error.message
+    except Exception:
+        # A bug. Without this, the job would stay "running" forever.
+        logger.exception("import %s: unexpected error", job_id)
+        job.status, job.error = "failed", "The import failed unexpectedly."
+    job.finished_at = timezone.now()
+    job.save(update_fields=["status", "error", "finished_at"])
+    logger.info("import %s %s: fetched %d, created %d", job_id, job.status, job.fetched, job.created)
 
 
 def submit_ad(raw_text, source_url=None, confirm=False):
@@ -248,6 +319,12 @@ def retry_ad(ad_id):
     enqueue_parse(ad_id)
     logger.info("ad %s: retry queued", ad_id)
     return ad
+
+
+def enqueue_import(job_id):
+    """Put one ImportJob id on the queue (same pattern as enqueue_parse)."""
+    from .tasks import run_import
+    run_import.delay(job_id)
 
 
 def enqueue_parse(ad_id):

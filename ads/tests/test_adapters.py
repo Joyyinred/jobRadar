@@ -246,11 +246,15 @@ def test_import_short_ad_warns_then_confirm_imports(api, enqueued, fake_jobtech)
 
 
 @pytestmark_db
-def test_search_import_returns_counts(api, enqueued, fake_jobtech):
-    fake_jobtech.hits = [jobtech_ad(ad_id=i, text=f"{LONG_AD} {i}") for i in range(1, 3)]
+def test_search_import_answers_202_at_once_and_queues_a_job(api, imports_queued, fake_jobtech):
+    """The request no longer waits for JobTech: it records the job and queues it."""
     response = api.post(SEARCH, {"query": "java", "limit": 2}, format="json")
-    assert response.status_code == 200
-    assert response.json() == {"created": 2, "duplicates": 0, "skipped": 0}
+    assert response.status_code == 202
+    body = response.json()
+    assert body["status"] == "pending"
+    assert body["params"] == {"query": "java", "limit": 2, "data_it_only": False}
+    assert imports_queued == [body["id"]]
+    assert fake_jobtech.calls == []  # JobTech not touched by the web request
 
 
 @pytestmark_db
@@ -260,7 +264,7 @@ def test_search_import_limit_must_be_1_to_100(api, limit):
 
 
 @pytestmark_db
-def test_data_it_import_searches_the_field_newest_first(api, enqueued, monkeypatch):
+def test_data_it_import_searches_the_field_newest_first(api, celery_eager, monkeypatch):
     sent = {}
 
     def fake_get(self, path, params=None, timeout=None):
@@ -269,7 +273,7 @@ def test_data_it_import_searches_the_field_newest_first(api, enqueued, monkeypat
 
     monkeypatch.setattr(JobTechClient, "_get", fake_get)
     response = api.post(SEARCH, {"data_it_only": True, "limit": 100}, format="json")
-    assert response.status_code == 200
+    assert response.status_code == 202  # celery_eager: the job already ran inside the request
     # First page of 20; JobTech returned nothing, so no further pages. No "q".
     assert sent == {"limit": 20, "offset": 0, "sort": "pubdate-desc", "occupation-field": "apaJ_2ja_LuF"}
 

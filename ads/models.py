@@ -125,3 +125,38 @@ class AdSkill(models.Model):
 
     def __str__(self):
         return f"ad {self.ad_id}: {self.skill} ({self.level})"
+
+
+class ImportJob(models.Model):
+    """One bulk import (a JobTech search), run in the background by a worker.
+
+    The import used to run inside the web request (73s for 100 ads). Now the
+    request only creates this row and queues it; the page polls
+    GET /api/imports/<id>/ for the status and the counts below, which the
+    worker updates after every page of results.
+    """
+
+    STATUS_CHOICES = [
+        ("pending", "pending"),        # queued, not started
+        ("running", "running"),
+        ("completed", "completed"),
+        ("failed", "failed"),          # e.g. JobTech down; ads imported so far stay imported
+    ]
+
+    # What to import: the validated request body, e.g.
+    # {"query": "junior", "limit": 100, "data_it_only": true}
+    params = models.JSONField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
+    error = models.CharField(max_length=200, blank=True, default="")
+
+    # Progress, updated page by page.
+    fetched = models.PositiveIntegerField(default=0)     # ads received from JobTech so far
+    created = models.PositiveIntegerField(default=0)     # new ads, queued for parsing
+    duplicates = models.PositiveIntegerField(default=0)  # already in the database
+    skipped = models.PositiveIntegerField(default=0)     # failed a rule (too long, too short...)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"ImportJob {self.id} ({self.status})"

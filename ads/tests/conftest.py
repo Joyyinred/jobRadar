@@ -32,16 +32,38 @@ def api():
     return APIClient()
 
 
+@pytest.fixture(autouse=True)
+def no_real_queue(request, monkeypatch):
+    """EVERY test: nothing ever reaches the real Redis queue.
+
+    Without this, a test that doesn't think about the queue would put real
+    tasks on it — and the real worker (if docker compose is up) would run them
+    against the real database. Queued ids are recorded in lists instead.
+
+    The exception is a test asking for `celery_eager`: there the tasks are
+    meant to run, right here, in-process.
+    """
+    queued = {"parse": [], "import": []}
+    if "celery_eager" not in request.fixturenames:
+        monkeypatch.setattr(services, "enqueue_parse", queued["parse"].append)
+        monkeypatch.setattr(services, "enqueue_import", queued["import"].append)
+    return queued
+
+
 @pytest.fixture
-def enqueued(monkeypatch):
-    """Replace "put on the Redis queue" with "remember the id in a list".
+def enqueued(no_real_queue):
+    """The ad ids "queued for parsing" during the test (see no_real_queue).
 
     For tests about submitting: we only check THAT an ad was queued (and how
     many times), not what the worker does with it.
     """
-    ids = []
-    monkeypatch.setattr(services, "enqueue_parse", ids.append)
-    return ids
+    return no_real_queue["parse"]
+
+
+@pytest.fixture
+def imports_queued(no_real_queue):
+    """The ImportJob ids "queued" during the test."""
+    return no_real_queue["import"]
 
 
 @pytest.fixture

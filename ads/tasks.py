@@ -54,3 +54,14 @@ def parse_ad(self, ad_id):
 
     services.mark_completed(ad)
     metrics.PARSE.labels("completed").inc()
+
+
+@shared_task
+def run_import(job_id):
+    """Run one bulk import. Queued by services.enqueue_import(job_id).
+
+    No automatic retry: if JobTech fails mid-way the job is marked failed with
+    what it got so far, and the user can simply start it again — ingest() is
+    idempotent, so ads imported the first time count as duplicates.
+    """
+    services.run_jobtech_import(job_id)

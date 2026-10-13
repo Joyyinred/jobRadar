@@ -15,4 +15,5 @@ urlpatterns = [
     path("imports/<int:job_id>/", views.get_import),               # GET: that import's progress
     # Market statistics over the collected ads.
     path("market/skills/", views.market_skills),  # GET ?seniority=junior&level=required
+    path("occupation-groups/", views.list_occupation_groups),  # GET: groups for the filters
 ]

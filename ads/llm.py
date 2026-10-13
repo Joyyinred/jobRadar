@@ -30,13 +30,28 @@ with exactly these keys:
   "company": string,                // the hiring company
   "city": string,                   // where the job is; "remote" if fully remote
   "seniority": "intern" | "junior" | "mid" | "senior" | "unspecified",
+  "employment_type": "permanent" | "fixed_term" | "internship" | "thesis" | "unspecified",
   "required_skills": [string],      // technical skills the ad REQUIRES
   "nice_to_have_skills": [string],  // skills listed as a plus / meriterande
   "swedish_requirement": "required" | "preferred" | "not_mentioned"
 }
 
-A skill goes in exactly one of the two lists, never both.
-Use short, common skill names ("Git", not "version control systems").
+employment_type:
+- "thesis": a degree project / master's or bachelor's thesis
+  (examensarbete, exjobb). NOT an ordinary job that merely asks for a degree.
+- "internship": internship, praktik, LIA, summer internship / trainee programme.
+- "permanent": tillsvidareanställning / permanent position.
+- "fixed_term": visstidsanställning, consultant assignment with an end date,
+  temporary or project employment.
+
+Skills:
+- A skill goes in exactly one of the two lists, never both.
+- Use short, common skill names in ENGLISH, even when the ad is in Swedish
+  ("Troubleshooting", not "felsökning"; "Cybersecurity", not "cybersäkerhet";
+  "Git", not "version control systems").
+- Spoken languages (Swedish, English, ...) are NOT skills: Swedish goes in
+  swedish_requirement, other languages are left out.
+
 If the ad does not say something, use "unspecified" / "not_mentioned" / [].
 Do not guess.
 """
@@ -60,6 +75,7 @@ def mock_llm(raw_text):
         "company": "Mock Company AB",
         "city": "Stockholm",
         "seniority": "junior",
+        "employment_type": "permanent",
         "required_skills": ["Python", "Django", "PostgreSQL"],
         "nice_to_have_skills": ["Docker", "AWS"],
         "swedish_requirement": "preferred",

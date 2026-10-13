@@ -67,6 +67,13 @@ class JobAd(models.Model):
     # null means "unknown", not "still open". Removed ads are kept, never deleted.
     expires_at = models.DateTimeField(null=True, blank=True)
     removed_at = models.DateTimeField(null=True, blank=True)
+
+    # JobTech's occupation group (its own taxonomy, not the LLM's guess), e.g.
+    # code "DJh5_yyF_hEM" / label "Mjukvaru- och systemutvecklare m.fl.".
+    # Filter on the code (stable); show the label. Empty for pasted ads, which
+    # have no JobTech classification (they appear under "all" only).
+    occupation_group_code = models.CharField(max_length=32, blank=True, default="", db_index=True)
+    occupation_group = models.CharField(max_length=200, blank=True, default="")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
     error = models.CharField(max_length=200, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -76,6 +83,9 @@ class JobAd(models.Model):
     title = models.CharField(max_length=300, blank=True, default="")
     city = models.CharField(max_length=100, blank=True, default="")  # per ad, not per company
     seniority = models.CharField(max_length=20, blank=True, default="")
+    # From the LLM: permanent | fixed_term | internship | thesis | unspecified.
+    # JobTech can't tell us this — thesis ads there are "Behovsanställning".
+    employment_type = models.CharField(max_length=20, blank=True, default="", db_index=True)
     swedish_requirement = models.CharField(max_length=20, blank=True, default="")
 
     # Foreign key: store the company's id, not its name.

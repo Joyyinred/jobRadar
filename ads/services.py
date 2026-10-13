@@ -13,6 +13,7 @@ import logging
 import re
 
 from django.db import IntegrityError, transaction
+from django.db.models import Count, Max
 from django.utils import timezone
 
 from .adapters import DATA_IT_FIELD, JobTechSearchAdapter, PasteAdapter
@@ -27,13 +28,43 @@ logger = logging.getLogger(__name__)
 
 # --- Reading ----------------------------------------------------------------
 
-def list_ads():
-    """Every ad, newest first."""
+def list_ads(seniority=None, employment_type=None, occupation_group=None):
+    """Ads, newest first, optionally filtered.
+
+    seniority:        list, e.g. ["junior", "intern"]
+    employment_type:  e.g. "thesis"
+    occupation_group: a JobTech group code, e.g. "DJh5_yyF_hEM"
+    """
     # select_related("company") fetches each ad's company in the SAME query
     # (a SQL JOIN). Without it, ad.company.name would run one extra query per
     # ad: 100 ads = 101 queries. That's called the "N+1 problem".
     # No pagination: 1,000 ads = 1,000 rows. Fine for now.
-    return JobAd.objects.select_related("company").order_by("-created_at")
+    ads = JobAd.objects.select_related("company").order_by("-created_at")
+    if seniority:
+        ads = ads.filter(seniority__in=seniority)
+    if employment_type:
+        ads = ads.filter(employment_type=employment_type)
+    if occupation_group:
+        ads = ads.filter(occupation_group_code=occupation_group)
+    return ads
+
+
+def occupation_groups():
+    """JobTech occupation groups present in the data, most ads first:
+    [{"code": "DJh5_yyF_hEM", "label": "Mjukvaru- och systemutvecklare m.fl.", "ads": 60}, ...]
+    For the filter drop-downs. Pasted ads (no group) aren't listed.
+    """
+    # Group by the CODE only. The label belongs to the code, but JobTech
+    # sometimes sends a code without a label — grouping by (code, label) split
+    # one group in two (82 + 2) and the drop-down disagreed with the stats.
+    # Max() picks the non-empty label ("" sorts before any text).
+    rows = (
+        JobAd.objects.exclude(occupation_group_code="")
+        .values("occupation_group_code")
+        .annotate(ads=Count("id"), label=Max("occupation_group"))
+        .order_by("-ads", "label")
+    )
+    return [{"code": r["occupation_group_code"], "label": r["label"], "ads": r["ads"]} for r in rows]
 
 
 def get_ad(ad_id):
@@ -154,6 +185,8 @@ def _ingest(raw, confirm=False):
                 source_url=raw.source_url,
                 source_external_id=raw.source_external_id,
                 expires_at=raw.expires_at,
+                occupation_group_code=raw.occupation_group_code,
+                occupation_group=raw.occupation_group,
                 status="pending",
             )
     except IntegrityError:
@@ -393,6 +426,7 @@ def save_parsed(ad, data):
     ad.title = data.get("title") or ""
     ad.city = data.get("city") or ""
     ad.seniority = data.get("seniority") or ""
+    ad.employment_type = data.get("employment_type") or ""
     ad.swedish_requirement = data.get("swedish_requirement") or ""
     ad.save()
 

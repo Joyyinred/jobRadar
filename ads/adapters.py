@@ -41,6 +41,8 @@ class RawJobAd:
     source_url: str | None = None
     source_external_id: str | None = None   # the ad's id at the source, if it has one
     expires_at: datetime | None = None      # when the source plans to take it down
+    occupation_group_code: str = ""         # JobTech's occupation group, if the source has one
+    occupation_group: str = ""              # its readable label
 
 
 # --- The interface every adapter implements -------------------------------------
@@ -146,6 +148,8 @@ class JobTechClient:
             source_url=ad.get("webpage_url"),
             source_external_id=str(ad["id"]),
             expires_at=_aware(ad.get("last_publication_date")),
+            occupation_group_code=(ad.get("occupation_group") or {}).get("concept_id") or "",
+            occupation_group=(ad.get("occupation_group") or {}).get("label") or "",
         )
 
     def _get(self, path, params=None, timeout=None):

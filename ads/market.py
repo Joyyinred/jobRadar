@@ -32,17 +32,21 @@ SAMPLE_NOTE = (
 )
 
 
-def skill_frequency(seniority=None, level=None, top=20):
+def skill_frequency(seniority=None, level=None, top=20, occupation_group=None):
     """How many of the matching ads mention each skill.
 
-    seniority: list like ["junior", "intern"], or None for all
-    level:     "required" / "nice_to_have", or None for either
+    seniority:        list like ["junior", "intern"], or None for all
+    level:            "required" / "nice_to_have", or None for either
+    occupation_group: a JobTech group code, or None for all (pasted ads,
+                      which have no group, only count under "all")
     Returns a dict ready for the API (see MarketSkillsView).
     Raises InsufficientDataError if fewer than MIN_SAMPLE ads match.
     """
     ads = JobAd.objects.filter(status="completed")
     if seniority:
         ads = ads.filter(seniority__in=seniority)
+    if occupation_group:
+        ads = ads.filter(occupation_group_code=occupation_group)
 
     sample_size = ads.count()
     if sample_size < MIN_SAMPLE:
@@ -73,7 +77,11 @@ def skill_frequency(seniority=None, level=None, top=20):
 
     return {
         "sample_size": sample_size,
-        "filters": {"seniority": seniority or "all", "level": level or "any"},
+        "filters": {
+            "seniority": seniority or "all",
+            "level": level or "any",
+            "occupation_group": occupation_group or "all",
+        },
         "skills": [
             {
                 "name": names[row["key"]],

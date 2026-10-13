@@ -17,6 +17,7 @@ from . import market, services
 from .adapters import PlatsbankenUrlAdapter
 from .serializers import (
     AdDetailSerializer,
+    AdListQuerySerializer,
     AdSummarySerializer,
     CreateAdSerializer,
     ImportJobSerializer,
@@ -40,9 +41,41 @@ def ads_collection(request):
 
 
 def list_ads(request):
-    """GET /api/ads/ — a short summary of every ad, newest first."""
-    ads = services.list_ads()
+    """GET /api/ads/?seniority=junior&seniority=intern&employment_type=thesis&occupation_group=<code>
+
+    A short summary of each ad, newest first. All filters optional.
+    """
+    data = query_params(request, AdListQuerySerializer, lists=["seniority"])
+    ads = services.list_ads(
+        seniority=data.get("seniority"),
+        employment_type=data.get("employment_type"),
+        occupation_group=data.get("occupation_group"),
+    )
     return Response(AdSummarySerializer(ads, many=True).data)
+
+
+def query_params(request, serializer_class, lists=()):
+    """Validate a query string with a serializer.
+
+    A key can repeat (?seniority=junior&seniority=intern); for the keys in
+    `lists`, getlist() keeps every value — plain .get() would keep only the last.
+    """
+    params = request.query_params.dict()
+    for key in lists:
+        values = request.query_params.getlist(key)
+        if values:
+            params[key] = values
+        else:
+            params.pop(key, None)
+    serializer = serializer_class(data=params)
+    serializer.is_valid(raise_exception=True)
+    return serializer.validated_data
+
+
+@api_view(["GET"])
+def list_occupation_groups(request):
+    """GET /api/occupation-groups/ — JobTech groups in the data, for filter drop-downs."""
+    return Response(services.occupation_groups())
 
 
 def create_ad(request):
@@ -131,15 +164,8 @@ def market_skills(request):
 
     Fewer than market.MIN_SAMPLE matching ads -> 422 (via the handler).
     """
-    # A query string can repeat a key (?seniority=junior&seniority=intern);
-    # getlist() keeps every value, plain .get() would keep only the last.
-    params = {**request.query_params.dict(), "seniority": request.query_params.getlist("seniority")}
-    if not params["seniority"]:
-        del params["seniority"]
-    serializer = MarketSkillsQuerySerializer(data=params)
-    serializer.is_valid(raise_exception=True)
-    data = serializer.validated_data
-
+    data = query_params(request, MarketSkillsQuerySerializer, lists=["seniority"])
     return Response(market.skill_frequency(
         seniority=data.get("seniority"), level=data.get("level"), top=data["top"],
+        occupation_group=data.get("occupation_group"),
     ))

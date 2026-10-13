@@ -49,6 +49,9 @@
       <option value="">All seniorities</option>
       <option value="mid,senior">Mid + senior</option>
     </select>
+    <select id="market_group" class="group-select" style="font: inherit;">
+      <option value="">All job roles</option>
+    </select>
     <select id="market_level" style="font: inherit;">
       <option value="">Required or nice-to-have</option>
       <option value="required">Required only</option>
@@ -59,6 +62,25 @@
   <div id="market"></div>
 
   <h2>Your ads</h2>
+  <p>
+    <select id="list_seniority" style="font: inherit;">
+      <option value="">All levels</option>
+      <option value="junior,intern">Junior + intern</option>
+      <option value="junior">Junior</option>
+      <option value="mid,senior">Mid + senior</option>
+    </select>
+    <select id="list_employment" style="font: inherit;">
+      <option value="">All employment types</option>
+      <option value="thesis">Thesis work (exjobb)</option>
+      <option value="internship">Internship</option>
+      <option value="permanent">Permanent</option>
+      <option value="fixed_term">Fixed term</option>
+    </select>
+    <select id="list_group" class="group-select" style="font: inherit;">
+      <option value="">All job roles</option>
+    </select>
+  </p>
+  <p id="list_count" class="note"></p>
   <ul id="ad-list"></ul>
 
   <script>
@@ -247,16 +269,38 @@
     }
 
     // GET /api/ads/ — the list. One <li> per ad; click it to see the details.
+    // Every loadList() call gets a number. Changing filters quickly fires
+    // several requests, and their replies can arrive in any order; only the
+    // reply to the LATEST request may draw the list — an older, slower one
+    // would show the wrong filter's results (seen when three filters changed at once).
+    let latestListRequest = 0;
+
     async function loadList() {
-      const response = await fetch("/api/ads/", { headers: { Accept: "application/json" } });
+      const thisRequest = ++latestListRequest;
+      // Filters from the three drop-downs above the list -> query string.
+      const params = new URLSearchParams();
+      for (const s of document.getElementById("list_seniority").value.split(",").filter(Boolean)) {
+        params.append("seniority", s);
+      }
+      const employment = document.getElementById("list_employment").value;
+      if (employment) params.append("employment_type", employment);
+      const group = document.getElementById("list_group").value;
+      if (group) params.append("occupation_group", group);
+
+      const response = await fetch(`/api/ads/?${params}`, { headers: { Accept: "application/json" } });
       const ads = await response.json();
+      if (thisRequest !== latestListRequest) return;  // a newer request is on its way: drop this reply
+      document.getElementById("list_count").textContent = `${ads.length} ads`;
 
       const list = document.getElementById("ad-list");
       list.innerHTML = "";
       for (const ad of ads) {
         const li = document.createElement("li");
         li.style.cursor = "pointer";
-        li.textContent = `#${ad.id} ${ad.title ?? "(no title)"} — ${ad.company ?? "?"} [${ad.status}]`;
+        // Tags: what the filters look at, so you can see why an ad is listed.
+        const tags = [ad.seniority, ad.employment_type].filter((t) => t && t !== "unspecified");
+        li.textContent = `#${ad.id} ${ad.title ?? "(no title)"} — ${ad.company ?? "?"} [${ad.status}]` +
+          (tags.length ? `  · ${tags.join(", ")}` : "");
         li.addEventListener("click", () => showAd(ad.id));
         list.appendChild(li);
       }
@@ -309,6 +353,24 @@
       pollUntilDone(id);
     }
 
+    // JobTech occupation groups present in the data -> both "job role" drop-downs.
+    async function loadOccupationGroups() {
+      const groups = await (await fetch("/api/occupation-groups/", { headers: { Accept: "application/json" } })).json();
+      for (const select of document.querySelectorAll(".group-select")) {
+        for (const group of groups) {
+          const option = document.createElement("option");
+          option.value = group.code;
+          option.textContent = `${group.label} (${group.ads})`;
+          select.appendChild(option);
+        }
+      }
+    }
+
+    for (const id of ["list_seniority", "list_employment", "list_group"]) {
+      document.getElementById(id).addEventListener("change", loadList);  // filter right away
+    }
+
+    loadOccupationGroups();
     loadList();  // fill the list as soon as the page opens
 
     // ---- Market statistics: GET /api/market/skills/ ----------------------------
@@ -323,6 +385,8 @@
       }
       const level = document.getElementById("market_level").value;
       if (level) params.append("level", level);
+      const marketGroup = document.getElementById("market_group").value;
+      if (marketGroup) params.append("occupation_group", marketGroup);
 
       marketEl.textContent = "Loading...";
       let response, data;

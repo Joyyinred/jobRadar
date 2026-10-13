@@ -77,15 +77,29 @@ class JobTechSearchImportSerializer(serializers.Serializer):
         return data
 
 
+SENIORITIES = ["intern", "junior", "mid", "senior", "unspecified"]
+EMPLOYMENT_TYPES = ["permanent", "fixed_term", "internship", "thesis", "unspecified"]
+
+
 class MarketSkillsQuerySerializer(serializers.Serializer):
     """Query string of GET /api/market/skills/?seniority=junior&seniority=intern&level=required&top=20"""
 
     seniority = serializers.ListField(
-        child=serializers.ChoiceField(choices=["intern", "junior", "mid", "senior", "unspecified"]),
+        child=serializers.ChoiceField(choices=SENIORITIES),
         required=False,
     )
     level = serializers.ChoiceField(choices=["required", "nice_to_have"], required=False)
     top = serializers.IntegerField(min_value=1, max_value=100, default=20)
+    occupation_group = serializers.CharField(max_length=32, required=False)  # a JobTech group code
+
+
+class AdListQuerySerializer(serializers.Serializer):
+    """Query string of GET /api/ads/?seniority=junior&employment_type=thesis&occupation_group=DJh5_yyF_hEM
+    All optional; none = every ad."""
+
+    seniority = serializers.ListField(child=serializers.ChoiceField(choices=SENIORITIES), required=False)
+    employment_type = serializers.ChoiceField(choices=EMPLOYMENT_TYPES, required=False)
+    occupation_group = serializers.CharField(max_length=32, required=False)
 
 
 # --- Out ---------------------------------------------------------------------
@@ -98,6 +112,10 @@ class AdSummarySerializer(serializers.Serializer):
     # SerializerMethodField = "the value comes from the get_<name> method below".
     title = serializers.SerializerMethodField()
     company = serializers.SerializerMethodField()
+    # Shown next to each ad in the list, and what the list filters on.
+    seniority = serializers.CharField()
+    employment_type = serializers.CharField()
+    occupation_group = serializers.CharField()
 
     def get_title(self, ad):
         return ad.title or None  # "" (not parsed yet) -> null, as before
@@ -117,6 +135,8 @@ class AdResultSerializer(serializers.Serializer):
     company = serializers.SerializerMethodField()
     city = serializers.CharField()
     seniority = serializers.CharField()
+    employment_type = serializers.CharField()
+    occupation_group = serializers.CharField()  # JobTech's group; "" for pasted ads
     required_skills = serializers.SerializerMethodField()
     nice_to_have_skills = serializers.SerializerMethodField()
     swedish_requirement = serializers.CharField()

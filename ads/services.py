@@ -21,6 +21,7 @@ from .exceptions import BlockError, NotFoundError, UpstreamError, ValidationErro
 from . import metrics
 from .llm import call_llm
 from .models import AdSkill, Company, ImportJob, JobAd, Skill
+from .skill_aliases import canonical_names, case_matters
 
 # __name__ is "ads.services", so it inherits the "ads" logger from settings.LOGGING.
 logger = logging.getLogger(__name__)
@@ -435,9 +436,26 @@ def save_parsed(ad, data):
     # Start clean: a retry (or a half-finished earlier attempt) must not mix
     # old skill links with new ones. The Skill rows themselves stay.
     ad.ad_skills.all().delete()
+    # "required" first: if the LLM lists a skill in both lists (or two names
+    # collapse into one canonical skill), the first link wins — required.
     for level, key in [("required", "required_skills"), ("nice_to_have", "nice_to_have_skills")]:
         for name in data.get(key) or []:
-            skill, _ = Skill.objects.get_or_create(name=name.strip())
-            # get_or_create again: if the LLM lists a skill twice, the
-            # unique (ad, skill) constraint would otherwise reject the 2nd row.
-            AdSkill.objects.get_or_create(ad=ad, skill=skill, defaults={"level": level})
+            # The alias table decides the name ("Microsoft Azure" -> "Azure",
+            # "C/C++" -> "C" and "C++"), not the LLM.
+            for canonical in canonical_names(name):
+                skill = skill_named(canonical)
+                # get_or_create: two names can now land on one skill, and the
+                # unique (ad, skill) constraint would reject the second link.
+                AdSkill.objects.get_or_create(ad=ad, skill=skill, defaults={"level": level})
+
+
+def skill_named(name):
+    """The Skill row for this name, ignoring case ("cloud" reuses "Cloud").
+
+    Without this, every new capitalisation the LLM came up with became a new
+    skill and split the statistics.
+    """
+    if case_matters(name):  # LoRA is not LoRa — see skill_aliases.CASE_SENSITIVE_NAMES
+        return Skill.objects.get_or_create(name=name)[0]
+    skill = Skill.objects.filter(name__iexact=name).order_by("id").first()
+    return skill or Skill.objects.create(name=name)

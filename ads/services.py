@@ -30,24 +30,29 @@ logger = logging.getLogger(__name__)
 
 # --- Reading ----------------------------------------------------------------
 
-def list_ads(seniority=None, employment_type=None, occupation_group=None):
-    """Ads, newest first, optionally filtered.
+def list_ads(seniority=None, employment_type=None, occupation_group=None, origin=None):
+    """Ads, newest first, optionally filtered. A query, not rows yet: the view
+    pages it (pagination.py), so only one page is ever read.
 
     seniority:        list, e.g. ["junior", "intern"]
     employment_type:  e.g. "thesis"
     occupation_group: a JobTech group code, e.g. "DJh5_yyF_hEM"
+    origin:           "user" (added by you) or "import"
     """
     # select_related("company") fetches each ad's company in the SAME query
     # (a SQL JOIN). Without it, ad.company.name would run one extra query per
     # ad: 100 ads = 101 queries. That's called the "N+1 problem".
-    # No pagination: 1,000 ads = 1,000 rows. Fine for now.
-    ads = JobAd.objects.select_related("company").order_by("-created_at")
+    # "-id" breaks ties: ads imported in the same instant still have one fixed
+    # order, so no ad shows up on two pages or on none.
+    ads = JobAd.objects.select_related("company").order_by("-created_at", "-id")
     if seniority:
         ads = ads.filter(seniority__in=seniority)
     if employment_type:
         ads = ads.filter(employment_type=employment_type)
     if occupation_group:
         ads = ads.filter(occupation_group_code=occupation_group)
+    if origin:
+        ads = ads.filter(origin=origin)
     return ads
 
 
@@ -101,14 +106,14 @@ def content_hash_of(raw_text):
     return hashlib.sha256(normalise(raw_text).encode("utf-8")).hexdigest()
 
 
-def ingest(raw, confirm=False):
+def ingest(raw, confirm=False, origin="user"):
     """_ingest() plus counting the outcome for monitoring (Day 11).
 
     Counting lives in this thin wrapper so the rules in _ingest() don't need
     a metrics line before every return and raise.
     """
     try:
-        ad, created = _ingest(raw, confirm)
+        ad, created = _ingest(raw, confirm, origin)
     except WarningException:
         metrics.INGEST.labels(raw.source, "warning").inc()
         raise
@@ -119,8 +124,10 @@ def ingest(raw, confirm=False):
     return ad, created
 
 
-def _ingest(raw, confirm=False):
+def _ingest(raw, confirm=False, origin="user"):
     """Store one RawJobAd as a pending ad and queue it for parsing.
+
+    origin: "user" (Add ads page) or "import" (a bulk import) — see JobAd.origin.
 
     The ONLY place a JobAd is created from outside data — whichever adapter
     produced `raw`, the same rules apply.
@@ -193,6 +200,7 @@ def _ingest(raw, confirm=False):
                 expires_at=raw.expires_at,
                 occupation_group_code=raw.occupation_group_code,
                 occupation_group=raw.occupation_group,
+                origin=origin,
                 status="pending",
             )
     except IntegrityError:
@@ -231,10 +239,20 @@ def ingest_one(adapter, confirm=False):
         existing = find_by_external_id(adapter.source, adapter.external_id)
         if existing:
             metrics.INGEST.labels(adapter.source, "duplicate").inc()
-            return existing, False
+            return claim(existing), False
 
     [raw] = adapter.fetch()
-    return ingest(raw, confirm=confirm)
+    ad, created = ingest(raw, confirm=confirm)
+    return (ad if created else claim(ad)), created
+
+
+def claim(ad):
+    """You added an ad yourself that a bulk import had already brought in:
+    it's yours now — that you chose it is what "user" means."""
+    if ad.origin != "user":
+        ad.origin = "user"
+        ad.save(update_fields=["origin"])
+    return ad
 
 
 def ingest_batch(adapter, on_page=None):
@@ -253,7 +271,7 @@ def ingest_batch(adapter, on_page=None):
         fetched += len(page)
         for raw in page:
             try:
-                _, created = ingest(raw)
+                _, created = ingest(raw, origin="import")
             except (ValidationError, WarningException) as error:
                 logger.info("skipped %s ad %s: %s", raw.source, raw.source_external_id, error.code)
                 counts["skipped"] += 1

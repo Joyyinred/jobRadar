@@ -174,6 +174,13 @@ select:focus {
   cursor: default;
 }
 
+/* Secondary actions (Prev / Next): outlined, so the page's main button stands out. */
+.button-quiet {
+  background: var(--surface);
+  color: var(--accent);
+  border: 1px solid var(--border);
+}
+
 .button-small {
   padding: 4px 10px;
   font-size: 0.85rem;
@@ -236,6 +243,11 @@ select:focus {
   white-space: nowrap;
 }
 
+.tag-mine {
+  background: var(--accent);
+  color: #fff;
+}
+
 .tag-muted {
   background: var(--bg);
   color: var(--text-muted);
@@ -292,8 +304,17 @@ select:focus {
   margin: 0;
   padding: 0;
   /* The list is the page now: let it use the screen, scroll inside it. */
-  max-height: calc(100vh - 220px);
+  max-height: calc(100vh - 280px); /* room for the pager below */
   overflow-y: auto;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
 }
 
 .job-row {

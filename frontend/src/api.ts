@@ -17,6 +17,19 @@ export type AdSummary = {
   seniority: string // "" until parsed
   employment_type: string
   occupation_group: string // "" for pasted ads
+  origin: Origin
+}
+
+/** Who put an ad in: you (Add ads page) or a bulk import. */
+export type Origin = 'user' | 'import'
+
+/** GET /api/ads/ — one page of the list. */
+export type AdPage = {
+  count: number // ads matching the filters, on all pages
+  page: number
+  pages: number
+  page_size: number
+  results: AdSummary[]
 }
 
 /** The parsed fields of a completed ad. */
@@ -123,9 +136,15 @@ function query(params: Record<string, string | string[] | number | undefined>): 
 
 // ---- One function per endpoint -------------------------------------------------
 
-export type AdFilters = { seniority?: string[]; employment_type?: string; occupation_group?: string }
+export type AdFilters = {
+  seniority?: string[]
+  employment_type?: string
+  occupation_group?: string
+  origin?: string
+  page?: number
+}
 
-export const listAds = async (filters: AdFilters) => (await request<AdSummary[]>(`/api/ads/${query(filters)}`)).data
+export const listAds = async (filters: AdFilters) => (await request<AdPage>(`/api/ads/${query(filters)}`)).data
 
 export const getAd = async (id: number) => (await request<AdDetail>(`/api/ads/${id}/`)).data
 

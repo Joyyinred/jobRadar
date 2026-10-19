@@ -19,6 +19,7 @@ export type AdSummary = {
   employment_type: string
   occupation_group: string // "" for pasted ads
   origin: Origin
+  closed: boolean // taken down, or past its deadline
 }
 
 /** Who put an ad in: you (Add ads page) or a bulk import. */
@@ -53,7 +54,18 @@ export type AdDetail = {
   status: ParseStatus
   result?: AdResult // only when completed
   error?: string // only when failed
+  listing?: Listing // only from GET /api/ads/<id>/
   duplicate?: boolean
+}
+
+/** The ad as it was posted: full text and how to apply. */
+export type Listing = {
+  text: string
+  ad_url: string | null // the ad's page (Platsbanken), or the link given when pasting
+  apply_url: string | null // the employer's application form, if stated
+  apply_email: string | null
+  apply_by: string | null // ISO date-time: the application deadline
+  removed_at: string | null // seen taken down at the source
 }
 
 export type OccupationGroup = { code: string; label: string; ads: number }

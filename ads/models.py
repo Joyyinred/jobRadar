@@ -9,6 +9,7 @@ Rule of thumb for where a field goes: "can this differ between two ads?"
   no  -> its own table, stored once (company name, skill name)
 """
 from django.db import models
+from django.utils import timezone
 
 
 class Company(models.Model):
@@ -77,6 +78,14 @@ class JobAd(models.Model):
     expires_at = models.DateTimeField(null=True, blank=True)
     removed_at = models.DateTimeField(null=True, blank=True)
 
+    # How to apply, from JobTech's application_details. Not the same as
+    # source_url: that's the ad's page on Platsbanken; apply_url is usually
+    # the employer's own form (Teamtailor, Workday, ...). Some ads only give
+    # an email. Both empty when the ad says neither (or for pasted ads).
+    # 1000: real application links carry long tracking query strings.
+    apply_url = models.URLField(max_length=1000, blank=True, default="")
+    apply_email = models.CharField(max_length=254, blank=True, default="")
+
     # JobTech's occupation group (its own taxonomy, not the LLM's guess), e.g.
     # code "DJh5_yyF_hEM" / label "Mjukvaru- och systemutvecklare m.fl.".
     # Filter on the code (stable); show the label. Empty for pasted ads, which
@@ -107,6 +116,12 @@ class JobAd(models.Model):
     company = models.ForeignKey(
         Company, null=True, blank=True, on_delete=models.PROTECT, related_name="ads"
     )
+
+    @property
+    def is_closed(self):
+        """Can't apply any more: taken down at the source, or past its deadline.
+        Unknown (pasted ads have neither date) counts as open."""
+        return self.removed_at is not None or (self.expires_at is not None and self.expires_at < timezone.now())
 
     class Meta:
         constraints = [

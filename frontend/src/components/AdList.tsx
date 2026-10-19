@@ -111,6 +111,7 @@ export function AdList({ groups, selectedId, onSelect, refreshKey }: Props) {
                 {/* Only yours get a tag: most ads are imported, so tagging
                     those too would just be noise on every row. */}
                 {ad.origin === 'user' && <span className="tag tag-mine">{ORIGIN_LABELS.user}</span>}
+                {ad.closed && <span className="tag tag-closed">Closed</span>}
                 {ad.status !== 'completed' && <span className={`tag status-${ad.status}`}>{ad.status}</span>}
                 {ad.seniority && ad.seniority !== 'unspecified' && (
                   <span className="tag">{label(SENIORITY_LABELS, ad.seniority)}</span>

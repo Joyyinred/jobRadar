@@ -44,11 +44,8 @@ def test_llm_failure_ends_as_failed_after_retries(api, celery_eager):
     (3 times), then marks the ad failed with a safe message."""
     ad_id = api.post(ADS, {"raw_text": LONG_AD + " MOCK_FAIL"}, format="json").json()["id"]
 
-    assert api.get(f"{ADS}{ad_id}/").json() == {
-        "id": ad_id,
-        "status": "failed",
-        "error": "Could not parse this ad. Please try again.",
-    }
+    body = api.get(f"{ADS}{ad_id}/").json()
+    assert (body["status"], body["error"]) == ("failed", "Could not parse this ad. Please try again.")
 
 
 def test_failed_ad_can_be_retried_and_then_completes(api, celery_eager, monkeypatch):

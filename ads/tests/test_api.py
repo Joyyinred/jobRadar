@@ -55,6 +55,7 @@ def test_list_returns_summaries_newest_first(api, enqueued):
     assert body[0] == {
         "id": new.id, "status": "pending", "title": None, "title_en": None, "company": None,
         "seniority": "", "employment_type": "", "occupation_group": "",  # not parsed yet
+        "closed": False,
         "origin": "user",
     }
 
@@ -72,9 +73,9 @@ def test_get_completed_ad_includes_result(api):
 
 def test_get_failed_ad_includes_its_error(api):
     ad = make_ad(status="failed", error="Could not parse this ad. Please try again.")
-    assert api.get(f"{ADS}{ad.id}/").json() == {
-        "id": ad.id, "status": "failed", "error": "Could not parse this ad. Please try again.",
-    }
+    body = api.get(f"{ADS}{ad.id}/").json()
+    body.pop("listing")  # the original ad: test_listing.py
+    assert body == {"id": ad.id, "status": "failed", "error": "Could not parse this ad. Please try again."}
 
 
 def test_retry_failed_ad_returns_202(api, enqueued):

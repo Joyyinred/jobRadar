@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { type AdDetail, getAd, retryAd } from '../api'
 import { EMPLOYMENT_LABELS, label, SENIORITY_LABELS, SWEDISH_LABELS } from '../labels'
 import { ErrorBox } from './ErrorBox'
+import { ApplyLinks, FullAd } from './Listing'
 
 type Props = {
   adId: number
@@ -16,6 +17,9 @@ const isFinal = (ad: AdDetail | null) => ad?.status === 'completed' || ad?.statu
  *  (Day 6 polling) — and stops by itself when you select another ad. */
 export function AdDetailPanel({ adId, onChanged }: Props) {
   const [ad, setAd] = useState<AdDetail | null>(null)
+  // When the ad was loaded: "days left" counts from here. Reading the clock
+  // during render would make rendering impure (a different result each time).
+  const [loadedAt, setLoadedAt] = useState(0)
   const [error, setError] = useState<unknown>(null)
   const [retrying, setRetrying] = useState(false)
   // Bumping this re-runs the loading/polling effect below (used after Retry).
@@ -35,6 +39,7 @@ export function AdDetailPanel({ adId, onChanged }: Props) {
         const latest = await getAd(adId)
         if (stopped) return
         setAd(latest)
+        setLoadedAt(Date.now())
         setError(null)
         const final = isFinal(latest)
         if (wasFinal === false && final) onChanged() // it just finished: refresh the list
@@ -109,12 +114,18 @@ export function AdDetailPanel({ adId, onChanged }: Props) {
             {ad.result.occupation_group && <span className="tag tag-muted">{ad.result.occupation_group}</span>}
           </div>
 
+          {ad.listing && <ApplyLinks listing={ad.listing} now={loadedAt} />}
+
           <h3>Required</h3>
           <SkillChips skills={ad.result.required_skills} kind="required" />
           <h3>Nice to have</h3>
           <SkillChips skills={ad.result.nice_to_have_skills} kind="nice" />
         </>
       )}
+
+      {/* Not parsed yet (or failed): the links and the text are still worth having. */}
+      {!ad.result && ad.listing && <ApplyLinks listing={ad.listing} now={loadedAt} />}
+      {ad.listing && <FullAd text={ad.listing.text} />}
     </section>
   )
 }

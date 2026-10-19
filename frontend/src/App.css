@@ -248,6 +248,11 @@ select:focus {
   color: #fff;
 }
 
+.tag-closed {
+  background: var(--error-bg);
+  color: var(--text-muted);
+}
+
 .tag-muted {
   background: var(--bg);
   color: var(--text-muted);
@@ -383,6 +388,55 @@ select:focus {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* Links and deadline at the top of an ad */
+.listing-links {
+  margin: 14px 0 4px;
+}
+
+.button-link {
+  text-decoration: none;
+  display: inline-block;
+}
+
+.deadline {
+  font-size: 0.9rem;
+  margin: 6px 0 0;
+}
+
+.deadline-soon {
+  color: var(--intern);
+  font-weight: 600;
+}
+
+.deadline-closed {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+/* The full ad, folded away until asked for. "posting", never "ad" in a class
+   name: ad blockers hide .full-ad, .ad-list, ... (it happened, twice). */
+.posting {
+  margin-top: 18px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.posting summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.posting-text {
+  white-space: pre-wrap; /* keep the ad's own line breaks */
+  overflow-wrap: anywhere;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  max-height: 60vh;
+  overflow-y: auto;
+  margin-top: 10px;
 }
 
 /* ---- Import progress ----------------------------------------------------------- */

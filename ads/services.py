@@ -200,6 +200,8 @@ def _ingest(raw, confirm=False, origin="user"):
                 expires_at=raw.expires_at,
                 occupation_group_code=raw.occupation_group_code,
                 occupation_group=raw.occupation_group,
+                apply_url=raw.apply_url,
+                apply_email=raw.apply_email,
                 origin=origin,
                 status="pending",
             )

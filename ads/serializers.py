@@ -126,12 +126,16 @@ class AdSummarySerializer(serializers.Serializer):
     employment_type = serializers.CharField()
     occupation_group = serializers.SerializerMethodField()
     origin = serializers.CharField()  # "user" (added by you) or "import"
+    closed = serializers.SerializerMethodField()
 
     def get_title(self, ad):
         return ad.title or None  # "" (not parsed yet) -> null, as before
 
     def get_title_en(self, ad):
         return ad.title_en or None
+
+    def get_closed(self, ad):
+        return ad.is_closed
 
     def get_company(self, ad):
         return ad.company.name if ad.company else None
@@ -178,12 +182,37 @@ class AdResultSerializer(serializers.Serializer):
         return [s.skill.name for s in self._ad_skills if s.level == level]
 
 
+class AdListingSerializer(serializers.Serializer):
+    """The ad as it was posted, next to what the LLM made of it: the full text
+    (to check the extraction, and for everything it doesn't extract) and how
+    to apply."""
+
+    text = serializers.CharField(source="raw_text")
+    ad_url = serializers.CharField(source="source_url", allow_null=True)  # Platsbanken page, or the link you gave
+    apply_url = serializers.SerializerMethodField()
+    apply_email = serializers.SerializerMethodField()
+    apply_by = serializers.DateTimeField(source="expires_at", allow_null=True)  # JobTech: = application deadline
+    removed_at = serializers.DateTimeField(allow_null=True)  # seen taken down at the source
+
+    def get_apply_url(self, ad):
+        return ad.apply_url or None  # "" -> null: "not stated", for the page to test simply
+
+    def get_apply_email(self, ad):
+        return ad.apply_email or None
+
+
 class AdDetailSerializer(serializers.Serializer):
     """GET /api/ads/<id>/, and the 202 replies of POST and retry.
 
     Always id + status. Plus "result" once completed, or "error" once failed;
     pending / processing have nothing else to show yet.
+    With full=True (GET only) also "listing": the original text and links.
+    Not in the POST replies — that would send the whole pasted ad straight back.
     """
+
+    def __init__(self, *args, full=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.full = full
 
     def to_representation(self, ad):
         body = {"id": ad.id, "status": ad.status}
@@ -191,6 +220,8 @@ class AdDetailSerializer(serializers.Serializer):
             body["result"] = AdResultSerializer(ad).data
         elif ad.status == "failed":
             body["error"] = ad.error
+        if self.full:
+            body["listing"] = AdListingSerializer(ad).data
         return body
 
 

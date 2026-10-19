@@ -43,6 +43,8 @@ class RawJobAd:
     expires_at: datetime | None = None      # when the source plans to take it down
     occupation_group_code: str = ""         # JobTech's occupation group, if the source has one
     occupation_group: str = ""              # its readable label
+    apply_url: str = ""                     # where to apply, if the source says
+    apply_email: str = ""
 
 
 # --- The interface every adapter implements -------------------------------------
@@ -150,6 +152,8 @@ class JobTechClient:
             expires_at=_aware(ad.get("last_publication_date")),
             occupation_group_code=(ad.get("occupation_group") or {}).get("concept_id") or "",
             occupation_group=(ad.get("occupation_group") or {}).get("label") or "",
+            apply_url=_web_link((ad.get("application_details") or {}).get("url")),
+            apply_email=_email((ad.get("application_details") or {}).get("email")),
         )
 
     def _get(self, path, params=None, timeout=None):
@@ -169,6 +173,19 @@ class JobTechClient:
             )
         metrics.JOBTECH_REQUESTS.labels("ok").inc()
         return response.json()
+
+
+def _web_link(url):
+    """Only http(s) links, else "". The page puts this in an <a href>, and a
+    "javascript:..." link from someone else's data would run code in our page
+    when clicked. Data from outside is checked where it comes in."""
+    url = (url or "").strip()
+    return url if re.match(r"https?://", url, re.IGNORECASE) and len(url) <= 1000 else ""
+
+
+def _email(value):
+    value = (value or "").strip()
+    return value if re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", value) and len(value) <= 254 else ""
 
 
 def _aware(value):

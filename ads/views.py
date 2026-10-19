@@ -108,7 +108,7 @@ def ingest_response(ad, created):
 def get_ad(request, ad_id):
     """GET /api/ads/<ad_id>/"""
     ad = services.get_ad(ad_id)  # missing -> NotFoundError -> 404, via the handler
-    return Response(AdDetailSerializer(ad).data)  # 200 OK is the default
+    return Response(AdDetailSerializer(ad, full=True).data)  # 200 OK is the default
 
 
 @api_view(["POST"])  # POST, not GET: it changes state (failed -> pending) and queues work

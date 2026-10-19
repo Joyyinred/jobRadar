@@ -60,6 +60,15 @@ class JobAd(models.Model):
     # (see Meta): importing the same JobTech ad twice must not store it twice.
     source_external_id = models.CharField(max_length=64, null=True, blank=True)
 
+    # WHO put the ad in — not the same question as `source` (where the data
+    # came from): a Platsbanken link you add yourself is source "jobtech_api"
+    # but origin "user". Bulk imports are "import".
+    ORIGIN_CHOICES = [
+        ("user", "user"),       # pasted, or one link, through the Add ads page
+        ("import", "import"),   # a bulk import (search import, backfill_jobtech)
+    ]
+    origin = models.CharField(max_length=10, choices=ORIGIN_CHOICES, default="user", db_index=True)
+
     # When the ad is due to come down (JobTech's last_publication_date) and
     # when we saw it actually gone. Times, not a True/False "still available":
     # null removed_at already means "not seen removed", and the time also

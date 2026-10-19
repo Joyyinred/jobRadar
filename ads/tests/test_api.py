@@ -50,11 +50,12 @@ def test_post_duplicate_returns_200_with_the_existing_ad(api, enqueued):
 def test_list_returns_summaries_newest_first(api, enqueued):
     old, _ = services.submit_ad(LONG_AD)
     new, _ = services.submit_ad(LONG_AD + " Second.")
-    body = api.get(ADS).json()
+    body = api.get(ADS).json()["results"]  # one page; paging itself: test_paging_origin.py
     assert [a["id"] for a in body] == [new.id, old.id]
     assert body[0] == {
         "id": new.id, "status": "pending", "title": None, "company": None,
         "seniority": "", "employment_type": "", "occupation_group": "",  # not parsed yet
+        "origin": "user",
     }
 
 

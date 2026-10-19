@@ -96,12 +96,13 @@ class MarketSkillsQuerySerializer(serializers.Serializer):
 
 
 class AdListQuerySerializer(serializers.Serializer):
-    """Query string of GET /api/ads/?seniority=junior&employment_type=thesis&occupation_group=DJh5_yyF_hEM
-    All optional; none = every ad."""
+    """Query string of GET /api/ads/?seniority=junior&employment_type=thesis&occupation_group=DJh5_yyF_hEM&origin=user
+    All optional; none = every ad. (?page= is read by the paginator, not here.)"""
 
     seniority = serializers.ListField(child=serializers.ChoiceField(choices=SENIORITIES), required=False)
     employment_type = serializers.ChoiceField(choices=EMPLOYMENT_TYPES, required=False)
     occupation_group = serializers.CharField(max_length=32, required=False)
+    origin = serializers.ChoiceField(choices=["user", "import"], required=False)
 
 
 # --- Out ---------------------------------------------------------------------
@@ -123,6 +124,7 @@ class AdSummarySerializer(serializers.Serializer):
     seniority = serializers.CharField()
     employment_type = serializers.CharField()
     occupation_group = serializers.SerializerMethodField()
+    origin = serializers.CharField()  # "user" (added by you) or "import"
 
     def get_title(self, ad):
         return ad.title or None  # "" (not parsed yet) -> null, as before

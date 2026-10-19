@@ -8,13 +8,13 @@ No LLM, no queue, no database queries in here — see services.py and llm.py.
 No error responses either: problems are raised (in serializers or services)
 and turned into one JSON format by exceptions.exception_handler.
 """
-from django.shortcuts import render
 from rest_framework import status as http_status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from . import market, services
 from .adapters import PlatsbankenUrlAdapter
+from .pagination import AdPagination
 from .serializers import (
     AdDetailSerializer,
     AdListQuerySerializer,
@@ -27,11 +27,6 @@ from .serializers import (
 )
 
 
-def index(request):
-    """Serve the one HTML page. The page talks to the API with fetch()."""
-    return render(request, "ads/index.html")
-
-
 @api_view(["GET", "POST"])
 def ads_collection(request):
     """/api/ads/ — one URL, two actions. The HTTP method decides which."""
@@ -41,17 +36,22 @@ def ads_collection(request):
 
 
 def list_ads(request):
-    """GET /api/ads/?seniority=junior&seniority=intern&employment_type=thesis&occupation_group=<code>
+    """GET /api/ads/?seniority=junior&seniority=intern&employment_type=thesis&occupation_group=<code>&origin=user&page=2
 
-    A short summary of each ad, newest first. All filters optional.
+    A short summary of each ad, newest first, 20 per page. All filters optional.
     """
     data = query_params(request, AdListQuerySerializer, lists=["seniority"])
     ads = services.list_ads(
         seniority=data.get("seniority"),
         employment_type=data.get("employment_type"),
         occupation_group=data.get("occupation_group"),
+        origin=data.get("origin"),
     )
-    return Response(AdSummarySerializer(ads, many=True).data)
+    # The paginator adds LIMIT/OFFSET to the query (plus one COUNT), so only
+    # this page's 20 rows are read from the database — not all, then sliced.
+    paginator = AdPagination()
+    page = paginator.paginate_queryset(ads, request)
+    return paginator.get_paginated_response(AdSummarySerializer(page, many=True).data)
 
 
 def query_params(request, serializer_class, lists=()):

@@ -22,6 +22,11 @@ export const SWEDISH_LABELS: Record<string, string> = {
   not_mentioned: 'Swedish not mentioned',
 }
 
+export const ORIGIN_LABELS: Record<string, string> = {
+  user: 'Added by me',
+  import: 'Imported',
+}
+
 export const label = (labels: Record<string, string>, code: string) => labels[code] ?? code
 
 export const percent = (share: number) => `${(share * 100).toFixed(1)}%`

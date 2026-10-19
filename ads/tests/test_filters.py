@@ -28,7 +28,7 @@ def ad(n, seniority="junior", employment_type="permanent", group=None):
 
 
 def ids(response):
-    return sorted(a["id"] for a in response.json())
+    return sorted(a["id"] for a in response.json()["results"])
 
 
 def test_no_filter_lists_everything(api):
@@ -69,7 +69,7 @@ def test_unknown_employment_type_is_400(api):
 
 def test_list_shows_the_filter_fields(api):
     ad(1, employment_type="thesis", group=DEV)
-    row = api.get("/api/ads/").json()[0]
+    row = api.get("/api/ads/").json()["results"][0]
     assert (row["seniority"], row["employment_type"], row["occupation_group"]) == ("junior", "thesis", DEV_EN)
 
 

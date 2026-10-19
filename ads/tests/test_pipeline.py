@@ -25,6 +25,7 @@ def test_post_then_get_shows_the_parsed_ad(api, celery_eager):
     # The mock LLM's fixed answer, gathered back from the four tables:
     assert body["result"] == {
         "title": "Mock Junior Backend Developer",
+        "title_en": "Mock Junior Backend Developer",
         "company": "Mock Company AB",
         "city": "Stockholm",
         "seniority": "junior",

@@ -12,7 +12,8 @@ export type EmploymentType = 'permanent' | 'fixed_term' | 'internship' | 'thesis
 export type AdSummary = {
   id: number
   status: ParseStatus
-  title: string | null
+  title: string | null // as the ad wrote it, often Swedish
+  title_en: string | null // in English
   company: string | null
   seniority: string // "" until parsed
   employment_type: string
@@ -35,6 +36,7 @@ export type AdPage = {
 /** The parsed fields of a completed ad. */
 export type AdResult = {
   title: string
+  title_en: string
   company: string | null
   city: string
   seniority: string

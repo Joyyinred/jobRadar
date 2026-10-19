@@ -102,7 +102,10 @@ export function AdList({ groups, selectedId, onSelect, refreshKey }: Props) {
         {ads?.map((ad) => (
           <li key={ad.id}>
             <button className={ad.id === selectedId ? 'job-row selected' : 'job-row'} onClick={() => onSelect(ad.id)}>
-              <span className="job-title">{ad.title ?? `Ad #${ad.id}`}</span>
+              {/* title (Swedish) on hover: it's what you'd search for on Platsbanken. */}
+              <span className="job-title" title={ad.title ?? undefined}>
+                {ad.title_en ?? ad.title ?? `Ad #${ad.id}`}
+              </span>
               <span className="job-company">{ad.company ?? '—'}</span>
               <span className="tags">
                 {/* Only yours get a tag: most ads are imported, so tagging

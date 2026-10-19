@@ -27,6 +27,7 @@ with exactly these keys:
 
 {
   "title": string,                  // the job title as the ad states it
+  "title_en": string,               // that title in English (the same if it already is)
   "company": string,                // the hiring company
   "city": string,                   // where the job is; "remote" if fully remote
   "seniority": "intern" | "junior" | "mid" | "senior" | "unspecified",
@@ -72,6 +73,7 @@ def mock_llm(raw_text):
     logger.info("LLM_MODE=mock: returning a fixed answer, no API call")
     return {
         "title": "Mock Junior Backend Developer",
+        "title_en": "Mock Junior Backend Developer",
         "company": "Mock Company AB",
         "city": "Stockholm",
         "seniority": "junior",
@@ -120,6 +122,11 @@ def _call_llm(raw_text):
     if os.environ.get("LLM_MODE", "real") == "mock":
         return mock_llm(raw_text)
 
+    return _ask_for_json(SYSTEM_PROMPT, raw_text)
+
+
+def _ask_for_json(system, content):
+    """One DeepSeek call that must answer with JSON. Returns it parsed."""
     # DeepSeek exposes an Anthropic-compatible endpoint, so we use the anthropic
     # SDK and just point it at DeepSeek. Switching to Claude = remove base_url,
     # use ANTHROPIC_API_KEY, and change MODEL.
@@ -140,8 +147,8 @@ def _call_llm(raw_text):
         # This SDK version has no temperature argument, so it goes in the raw
         # request body; DeepSeek still reads it.
         extra_body={"temperature": 0},
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": raw_text}],
+        system=system,
+        messages=[{"role": "user", "content": content}],
     )
     # What this call costs. Recorded before parsing: tokens are billed even
     # when the answer turns out not to be valid JSON.
@@ -164,3 +171,29 @@ def _call_llm(raw_text):
     # If this isn't valid JSON, json.loads raises and the ad is marked failed.
     # (No check that the keys/values are right — that's Day 8.)
     return json.loads(text)
+
+
+# --- Translating titles of ads parsed before title_en existed ----------------
+#
+# Used once, by `manage.py translate_titles`: re-parsing every ad just for its
+# title would cost a whole ad's tokens each. A list of titles is a few tokens.
+
+TRANSLATE_PROMPT = """You translate job titles to English.
+You get a JSON array of job titles, mostly Swedish. Return ONLY a JSON array
+of the same length, in the same order: each title in English. A title that is
+already English stays exactly as it is. Keep names, product names and
+abbreviations (AWS, .NET, SAP) unchanged. No markdown, no explanation."""
+
+
+def translate_titles(titles):
+    """["Systemutvecklare", "Data Engineer"] -> ["Systems Developer", "Data Engineer"]
+
+    Raises ValueError if the answer isn't one English title per title given —
+    the caller skips that batch rather than storing titles next to the wrong ads.
+    """
+    if os.environ.get("LLM_MODE", "real") == "mock":
+        return list(titles)  # free and offline: "translated" = unchanged
+    answer = _ask_for_json(TRANSLATE_PROMPT, json.dumps(titles, ensure_ascii=False))
+    if not (isinstance(answer, list) and len(answer) == len(titles) and all(isinstance(t, str) for t in answer)):
+        raise ValueError(f"expected {len(titles)} titles back, got {str(answer)[:200]}")
+    return answer

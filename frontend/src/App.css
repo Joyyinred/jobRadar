@@ -351,6 +351,13 @@ select:focus {
 }
 
 /* ---- Ad detail --------------------------------------------------------------- */
+.original-title {
+  margin: -8px 0 10px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
 .company-line {
   margin: -6px 0 12px;
   color: var(--text-muted);

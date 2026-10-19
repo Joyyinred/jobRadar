@@ -21,6 +21,7 @@ from .exceptions import BlockError, NotFoundError, UpstreamError, ValidationErro
 from . import metrics
 from .llm import call_llm
 from .models import AdSkill, Company, ImportJob, JobAd, Skill
+from .occupation_labels import english_label
 from .skill_aliases import canonical_names, case_matters
 
 # __name__ is "ads.services", so it inherits the "ads" logger from settings.LOGGING.
@@ -52,7 +53,7 @@ def list_ads(seniority=None, employment_type=None, occupation_group=None):
 
 def occupation_groups():
     """JobTech occupation groups present in the data, most ads first:
-    [{"code": "DJh5_yyF_hEM", "label": "Mjukvaru- och systemutvecklare m.fl.", "ads": 60}, ...]
+    [{"code": "DJh5_yyF_hEM", "label": "Software and systems developers", "ads": 60}, ...]
     For the filter drop-downs. Pasted ads (no group) aren't listed.
     """
     # Group by the CODE only. The label belongs to the code, but JobTech
@@ -63,9 +64,13 @@ def occupation_groups():
         JobAd.objects.exclude(occupation_group_code="")
         .values("occupation_group_code")
         .annotate(ads=Count("id"), label=Max("occupation_group"))
-        .order_by("-ads", "label")
     )
-    return [{"code": r["occupation_group_code"], "label": r["label"], "ads": r["ads"]} for r in rows]
+    groups = [
+        {"code": r["occupation_group_code"], "label": english_label(r["occupation_group_code"], r["label"]), "ads": r["ads"]}
+        for r in rows
+    ]
+    # Sorted here, not in SQL: ties go alphabetically by the name people see.
+    return sorted(groups, key=lambda g: (-g["ads"], g["label"]))
 
 
 def get_ad(ad_id):

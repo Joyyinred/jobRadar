@@ -10,6 +10,8 @@ every source goes through — including imports that never touch a serializer.
 """
 from rest_framework import serializers
 
+from .occupation_labels import english_label
+
 # Defined once, in services (which applies it to EVERY source); the serializer
 # repeats the check only to give the web form a per-field error.
 from .services import MAX_AD_CHARS
@@ -104,6 +106,11 @@ class AdListQuerySerializer(serializers.Serializer):
 
 # --- Out ---------------------------------------------------------------------
 
+def occupation_group_name(ad):
+    """The group's English name (the database keeps JobTech's Swedish one)."""
+    return english_label(ad.occupation_group_code, ad.occupation_group)
+
+
 class AdSummarySerializer(serializers.Serializer):
     """One row of GET /api/ads/ (the list)."""
 
@@ -115,13 +122,16 @@ class AdSummarySerializer(serializers.Serializer):
     # Shown next to each ad in the list, and what the list filters on.
     seniority = serializers.CharField()
     employment_type = serializers.CharField()
-    occupation_group = serializers.CharField()
+    occupation_group = serializers.SerializerMethodField()
 
     def get_title(self, ad):
         return ad.title or None  # "" (not parsed yet) -> null, as before
 
     def get_company(self, ad):
         return ad.company.name if ad.company else None
+
+    def get_occupation_group(self, ad):
+        return occupation_group_name(ad)
 
 
 class AdResultSerializer(serializers.Serializer):
@@ -136,13 +146,16 @@ class AdResultSerializer(serializers.Serializer):
     city = serializers.CharField()
     seniority = serializers.CharField()
     employment_type = serializers.CharField()
-    occupation_group = serializers.CharField()  # JobTech's group; "" for pasted ads
+    occupation_group = serializers.SerializerMethodField()  # JobTech's group; "" for pasted ads
     required_skills = serializers.SerializerMethodField()
     nice_to_have_skills = serializers.SerializerMethodField()
     swedish_requirement = serializers.CharField()
 
     def get_company(self, ad):
         return ad.company.name if ad.company else None
+
+    def get_occupation_group(self, ad):
+        return occupation_group_name(ad)
 
     def get_required_skills(self, ad):
         return self._skill_names(ad, "required")

@@ -1,0 +1,67 @@
+/* Design tokens: every colour and size used by the app, in one place.
+   Dark mode just swaps the token values. */
+:root {
+  --bg: #f4f6fa;
+  --surface: #ffffff;
+  --border: #e3e7ef;
+  --text: #1c2433;
+  --text-muted: #6b7486;
+  --accent: #3b5bdb;
+  --accent-soft: #e7ecff;
+  --required: #3b5bdb;
+  --nice: #a5b4fc;
+  --thesis: #0c8599;
+  --thesis-soft: #e3fafc;
+  --intern: #e67700;
+  --intern-soft: #fff4e6;
+  --warning-bg: #fff8e1;
+  --warning-border: #f5c542;
+  --error-bg: #fff0f0;
+  --error-border: #f08c8c;
+  --radius: 10px;
+  --shadow: 0 1px 2px rgba(20, 30, 50, 0.06), 0 2px 8px rgba(20, 30, 50, 0.04);
+  font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  line-height: 1.5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f141c;
+    --surface: #171e29;
+    --border: #273142;
+    --text: #e6eaf2;
+    --text-muted: #8c96a8;
+    --accent: #7c95ff;
+    --accent-soft: #1f2a4a;
+    --required: #7c95ff;
+    --nice: #3b4a7a;
+    --thesis: #3bc9db;
+    --thesis-soft: #10343a;
+    --intern: #ffa94d;
+    --intern-soft: #3a2a14;
+    --warning-bg: #2f2812;
+    --warning-border: #8a6d1c;
+    --error-bg: #34181a;
+    --error-border: #8a3b3b;
+    --shadow: none;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+}
+
+input,
+textarea,
+select,
+button {
+  font: inherit;
+  color: inherit;
+}

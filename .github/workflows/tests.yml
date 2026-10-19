@@ -78,3 +78,32 @@ jobs:
         # pytest-django builds its own test_jobradar database from the
         # migrations, so this also proves the migrations work from scratch.
         run: pytest
+
+  frontend:
+    # Runs next to "tests", in parallel. Type check + lint + production build:
+    # a misspelled field anywhere in the React code fails here, not in a browser.
+    name: frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Set up Node 24 (same as the frontend container)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        # npm ci: exactly the versions in package-lock.json, nothing newer.
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check and build
+        run: npm run build

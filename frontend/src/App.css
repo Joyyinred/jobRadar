@@ -1,0 +1,464 @@
+/* ---- Page layout ------------------------------------------------------------ */
+.app {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 16px 48px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 0;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  letter-spacing: -0.02em;
+}
+
+.header h1 span {
+  color: var(--accent);
+}
+
+.nav {
+  border: none;
+  background: none;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.nav.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.layout.single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.sticky {
+  position: sticky;
+  top: 16px;
+}
+
+@media (max-width: 860px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .sticky {
+    position: static;
+  }
+}
+
+/* ---- Cards and common pieces -------------------------------------------- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 18px 20px;
+}
+
+.card h2 {
+  margin: 0 0 12px;
+  font-size: 1.1rem;
+}
+
+.card h3 {
+  margin: 18px 0 8px;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.note {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin-top: 14px;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.space-between {
+  justify-content: space-between;
+}
+
+.grow {
+  flex: 1 1 200px;
+}
+
+.narrow {
+  width: 5rem;
+}
+
+.filters {
+  margin-bottom: 12px;
+}
+
+input,
+textarea,
+select {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--surface);
+  max-width: 100%;
+}
+
+textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: 2px solid var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.checkbox {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--text-muted);
+}
+
+.button {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.button-small {
+  padding: 4px 10px;
+  font-size: 0.85rem;
+  margin-left: 8px;
+}
+
+/* Tabs inside a card (Paste / Platsbanken link) */
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  border: none;
+  background: none;
+  padding: 6px 12px;
+  cursor: pointer;
+  color: var(--text-muted);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+/* ---- Errors and warnings (one look per error type) ---------------------- */
+.alert {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--error-border);
+  background: var(--error-bg);
+  font-size: 0.9rem;
+}
+
+.alert-warning,
+.alert-insufficient_data {
+  border-color: var(--warning-border);
+  background: var(--warning-bg);
+}
+
+/* ---- Tags and skill chips ------------------------------------------------ */
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tag {
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.tag-muted {
+  background: var(--bg);
+  color: var(--text-muted);
+}
+
+.employment-thesis {
+  background: var(--thesis-soft);
+  color: var(--thesis);
+}
+
+.employment-internship {
+  background: var(--intern-soft);
+  color: var(--intern);
+}
+
+.status-pending,
+.status-processing {
+  background: var(--warning-bg);
+  color: var(--text-muted);
+}
+
+.status-failed {
+  background: var(--error-bg);
+  color: var(--text);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.chip-required {
+  background: var(--required);
+  color: #fff;
+}
+
+.chip-nice {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* ---- Ad list ---------------------------------------------------------------- */
+/* Class names say "job-", never "ad-": ad blockers hide elements named
+   .ad-list / .ad-row / .ad-title, so the list would vanish for their users. */
+.job-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  /* The list is the page now: let it use the screen, scroll inside it. */
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+}
+
+.job-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  padding: 10px;
+  cursor: pointer;
+}
+
+.job-row:hover {
+  background: var(--bg);
+}
+
+.job-row.selected {
+  background: var(--accent-soft);
+}
+
+.job-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.job-company {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+/* ---- Ad detail --------------------------------------------------------------- */
+.company-line {
+  margin: -6px 0 12px;
+  color: var(--text-muted);
+}
+
+.status-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---- Import progress ----------------------------------------------------------- */
+.progress-block {
+  margin-top: 12px;
+}
+
+.progress {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s;
+}
+
+/* ---- Market --------------------------------------------------------------------- */
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.stat {
+  flex: 1 1 140px;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.stat-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.stat-label {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.skill-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.skill-table th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  padding: 6px 8px;
+}
+
+.skill-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.skill-table .num {
+  text-align: right;
+  width: 6rem;
+}
+
+.bar-cell {
+  width: 50%;
+}
+
+/* A bar = the whole share of ads; its dark part = the required share. */
+.bar {
+  display: inline-block;
+  vertical-align: middle;
+  height: 10px;
+  max-width: calc(100% - 90px);
+  border-radius: 999px;
+  background: var(--nice);
+  overflow: hidden;
+}
+
+.bar-required {
+  height: 100%;
+  background: var(--required);
+}
+
+.bar-label {
+  margin-left: 8px;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+/* A button that looks like a link (inside running text). */
+.link-button {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}

@@ -448,6 +448,9 @@ def save_parsed(ad, data):
 
     # Per-ad fields: plain columns on JobAd.
     ad.title = data.get("title") or ""
+    # No title_en (an older prompt, or the model left it out): the original
+    # title is the best English title we have, and the list is never blank.
+    ad.title_en = data.get("title_en") or ad.title
     ad.city = data.get("city") or ""
     ad.seniority = data.get("seniority") or ""
     ad.employment_type = data.get("employment_type") or ""

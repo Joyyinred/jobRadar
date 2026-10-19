@@ -92,7 +92,10 @@ export function AdDetailPanel({ adId, onChanged }: Props) {
 
       {ad.result && (
         <>
-          <h2>{ad.result.title || 'Untitled role'}</h2>
+          <h2>{ad.result.title_en || ad.result.title || 'Untitled role'}</h2>
+          {ad.result.title && ad.result.title !== ad.result.title_en && (
+            <p className="original-title">Original: {ad.result.title}</p>
+          )}
           <p className="company-line">
             {ad.result.company ?? 'Company not stated'}
             {ad.result.city && ` · ${ad.result.city}`}

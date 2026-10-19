@@ -90,6 +90,10 @@ class JobAd(models.Model):
     # --- Parsed fields: differ per ad, so they are columns here ---
     # All blank/null until the parse completes.
     title = models.CharField(max_length=300, blank=True, default="")
+    # The title in English, for reading the list (most Platsbanken ads are in
+    # Swedish). `title` stays exactly as the ad wrote it — that's what you'd
+    # search for on Platsbanken. Same as `title` when the ad is in English.
+    title_en = models.CharField(max_length=300, blank=True, default="")
     city = models.CharField(max_length=100, blank=True, default="")  # per ad, not per company
     seniority = models.CharField(max_length=20, blank=True, default="")
     # From the LLM: permanent | fixed_term | internship | thesis | unspecified.

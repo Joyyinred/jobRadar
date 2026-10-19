@@ -119,6 +119,7 @@ class AdSummarySerializer(serializers.Serializer):
     status = serializers.CharField()
     # SerializerMethodField = "the value comes from the get_<name> method below".
     title = serializers.SerializerMethodField()
+    title_en = serializers.SerializerMethodField()  # English, for reading the list
     company = serializers.SerializerMethodField()
     # Shown next to each ad in the list, and what the list filters on.
     seniority = serializers.CharField()
@@ -128,6 +129,9 @@ class AdSummarySerializer(serializers.Serializer):
 
     def get_title(self, ad):
         return ad.title or None  # "" (not parsed yet) -> null, as before
+
+    def get_title_en(self, ad):
+        return ad.title_en or None
 
     def get_company(self, ad):
         return ad.company.name if ad.company else None
@@ -143,7 +147,8 @@ class AdResultSerializer(serializers.Serializer):
     Field order here = key order in the JSON = row order in the page's table.
     """
 
-    title = serializers.CharField()
+    title = serializers.CharField()  # as the ad wrote it
+    title_en = serializers.CharField()
     company = serializers.SerializerMethodField()
     city = serializers.CharField()
     seniority = serializers.CharField()

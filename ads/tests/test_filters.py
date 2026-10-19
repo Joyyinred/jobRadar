@@ -12,6 +12,9 @@ pytestmark = pytest.mark.django_db
 
 DEV = ("DJh5_yyF_hEM", "Mjukvaru- och systemutvecklare m.fl.")
 SUPPORT = ("hmaC_cfi_UKg", "Supporttekniker, IT")
+# What the API shows instead of JobTech's Swedish labels (ads/occupation_labels.py)
+DEV_EN = "Software and systems developers"
+SUPPORT_EN = "IT support technicians"
 
 
 def ad(n, seniority="junior", employment_type="permanent", group=None):
@@ -67,14 +70,14 @@ def test_unknown_employment_type_is_400(api):
 def test_list_shows_the_filter_fields(api):
     ad(1, employment_type="thesis", group=DEV)
     row = api.get("/api/ads/").json()[0]
-    assert (row["seniority"], row["employment_type"], row["occupation_group"]) == ("junior", "thesis", DEV[1])
+    assert (row["seniority"], row["employment_type"], row["occupation_group"]) == ("junior", "thesis", DEV_EN)
 
 
 def test_occupation_groups_lists_groups_with_counts_most_first(api):
     ad(1, group=DEV), ad(2, group=DEV), ad(3, group=SUPPORT), ad(4)
     assert api.get("/api/occupation-groups/").json() == [
-        {"code": DEV[0], "label": DEV[1], "ads": 2},
-        {"code": SUPPORT[0], "label": SUPPORT[1], "ads": 1},
+        {"code": DEV[0], "label": DEV_EN, "ads": 2},
+        {"code": SUPPORT[0], "label": SUPPORT_EN, "ads": 1},
     ]  # the pasted ad (no group) isn't a group
 
 
@@ -94,4 +97,20 @@ def test_a_group_whose_label_is_sometimes_missing_is_still_one_group(api):
     """JobTech occasionally sends a code without its label; that must not
     split the group (it did: 82 + 2, and the drop-down disagreed with the stats)."""
     ad(1, group=DEV), ad(2, group=DEV), ad(3, group=(DEV[0], ""))
-    assert api.get("/api/occupation-groups/").json() == [{"code": DEV[0], "label": DEV[1], "ads": 3}]
+    assert api.get("/api/occupation-groups/").json() == [{"code": DEV[0], "label": DEV_EN, "ads": 3}]
+
+
+def test_ad_detail_shows_the_english_group_name(api):
+    a = ad(1, group=DEV)
+    assert api.get(f"/api/ads/{a.id}/").json()["result"]["occupation_group"] == DEV_EN
+    # the database still holds what JobTech sent
+    a.refresh_from_db()
+    assert a.occupation_group == DEV[1]
+
+
+def test_a_group_without_a_translation_keeps_its_swedish_label(api):
+    """A new import can bring a group the table doesn't know yet: show it, in Swedish."""
+    ad(1, group=("new_code_123", "Nya yrkesgruppen"))
+    assert api.get("/api/occupation-groups/").json() == [
+        {"code": "new_code_123", "label": "Nya yrkesgruppen", "ads": 1},
+    ]

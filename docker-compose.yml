@@ -97,6 +97,27 @@ services:
     volumes:
       - .:/app
 
+  frontend:
+    # React + TypeScript, served by Vite's dev server with instant reload.
+    # http://localhost:5173 — it forwards /api/... to the web service.
+    # Development only: in production the frontend is just built static files
+    # (`npm run build` -> frontend/dist/), no Node server needed.
+    image: node:24-alpine
+    working_dir: /app/frontend
+    command: sh -c "npm install --no-audit --no-fund && npm run dev -- --host 0.0.0.0"
+    ports:
+      - "5173:5173"
+    environment:
+      API_TARGET: http://web:8000
+      VITE_USE_POLLING: "true"
+    volumes:
+      - .:/app
+      # node_modules must be the container's own (Linux builds of the packages),
+      # not the one npm installed on Windows: this empty volume hides it.
+      - frontend-node-modules:/app/frontend/node_modules
+    depends_on:
+      - web
+
   prometheus:
     # Day 11: collects the numbers. Every 15s it fetches /metrics from web and
     # :9100 from the worker (monitoring/prometheus.yml) and stores them.
@@ -131,5 +152,6 @@ services:
 
 volumes:
   pgdata:
+  frontend-node-modules:
   prometheus-data:
   grafana-data:

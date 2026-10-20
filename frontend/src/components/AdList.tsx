@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { type AdPage, listAds, type OccupationGroup } from '../api'
-import { DEGREE_LABELS, EMPLOYMENT_LABELS, label, ORIGIN_LABELS, SENIORITY_LABELS } from '../labels'
+import { DEGREE_LABELS, EMPLOYMENT_LABELS, label, ORIGIN_LABELS, SENIORITY_LABELS, STATUS_LABELS } from '../labels'
 import { ErrorBox } from './ErrorBox'
 
 type Props = {
@@ -9,12 +9,14 @@ type Props = {
   onSelect: (adId: number) => void
   /** Bumped by the parent when ads were added, to re-fetch the list. */
   refreshKey: number
+  /** Your application status per ad id ({} when logged out). */
+  tracked: Record<number, string>
 }
 
 /** "junior,intern" in a <select> value -> ["junior", "intern"] for the API. */
 const split = (value: string) => value.split(',').filter(Boolean)
 
-export function AdList({ groups, selectedId, onSelect, refreshKey }: Props) {
+export function AdList({ groups, selectedId, onSelect, refreshKey, tracked }: Props) {
   const [seniority, setSeniority] = useState('')
   const [employment, setEmployment] = useState('')
   const [group, setGroup] = useState('')
@@ -117,6 +119,7 @@ export function AdList({ groups, selectedId, onSelect, refreshKey }: Props) {
               <span className="tags">
                 {/* Only yours get a tag: most ads are imported, so tagging
                     those too would just be noise on every row. */}
+                {tracked[ad.id] && <span className="tag tag-tracked">{label(STATUS_LABELS, tracked[ad.id])}</span>}
                 {ad.origin === 'user' && <span className="tag tag-mine">{ORIGIN_LABELS.user}</span>}
                 {ad.closed && <span className="tag tag-closed">Closed</span>}
                 {ad.status !== 'completed' && <span className={`tag status-${ad.status}`}>{ad.status}</span>}

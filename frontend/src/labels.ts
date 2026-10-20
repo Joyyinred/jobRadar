@@ -24,6 +24,16 @@ export const DEGREE_LABELS: Record<string, string> = {
   unspecified: 'Level not stated',
 }
 
+// Your application's status, in the order an application usually goes.
+export const STATUS_LABELS: Record<string, string> = {
+  saved: 'Saved',
+  applied: 'Applied',
+  interview: 'Interview',
+  offer: 'Offer',
+  rejected: 'Rejected',
+  withdrawn: 'Withdrawn',
+}
+
 export const SWEDISH_LABELS: Record<string, string> = {
   required: 'Swedish required',
   preferred: 'Swedish a plus',

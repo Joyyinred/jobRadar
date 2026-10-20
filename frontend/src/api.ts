@@ -140,6 +140,8 @@ async function request<T>(url: string, init?: RequestInit): Promise<{ data: T; s
     // Network down, server restarting...
     throw new ApiError(0, { type: 'error', code: 'NETWORK', message: 'Could not reach the server. Please try again.' })
   }
+  // 204 No Content (e.g. DELETE): success with no body to read.
+  if (response.status === 204) return { data: undefined as T, status: 204 }
   let body: unknown
   try {
     body = await response.json()
@@ -197,6 +199,43 @@ export const getImport = async (id: number) => (await request<ImportJob>(`/api/i
 export const getOccupationGroups = async () => (await request<OccupationGroup[]>('/api/occupation-groups/')).data
 
 export type MarketFilters = { seniority?: string[]; level?: string; occupation_group?: string; top?: number }
+
+// ---- Your applications (logged in) ------------------------------------------------
+
+export type ApplicationStatus = 'saved' | 'applied' | 'interview' | 'offer' | 'rejected' | 'withdrawn'
+
+export type Application = {
+  ad: { id: number; title: string | null; company: string | null; apply_by: string | null; closed: boolean }
+  status: ApplicationStatus
+  notes: string
+  created_at: string
+  updated_at: string
+  applied_at: string | null
+  events: { status: ApplicationStatus; at: string }[] // the history, oldest first
+}
+
+export type ApplicationSummary = {
+  counts: Record<ApplicationStatus, number>
+  applied: number // got past "saved"
+  heard_back: number // of those, got an interview / offer / rejection
+  days_to_answer: number | null // median days from applying to the first answer
+}
+
+export const getApplications = async () =>
+  (await request<{ results: Application[]; summary: ApplicationSummary }>('/api/applications/')).data
+
+/** Your application for this ad, or null if you're not tracking it. */
+export const getAdApplication = async (adId: number) =>
+  (await request<{ application: Application | null }>(`/api/ads/${adId}/application/`)).data.application
+
+/** Start tracking, or change status / notes. Leave a field out to keep it. */
+export const trackAd = async (adId: number, body: { status?: ApplicationStatus; notes?: string }) =>
+  (await request<{ application: Application }>(`/api/ads/${adId}/application/`, { method: 'PUT', body: JSON.stringify(body) }))
+    .data.application
+
+export const untrackAd = async (adId: number) => {
+  await request<void>(`/api/ads/${adId}/application/`, { method: 'DELETE' })
+}
 
 // ---- Logging in ----------------------------------------------------------------
 

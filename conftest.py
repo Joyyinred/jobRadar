@@ -1,5 +1,6 @@
 """
-Shared test setup (pytest "fixtures"). A test asks for a fixture by naming it
+Shared test setup (pytest "fixtures") for every app's tests (ads, tracking) —
+at the project root so all of them see it. A test asks for a fixture by naming it
 as an argument: def test_x(api, enqueued): ...
 
 Rules for every test:

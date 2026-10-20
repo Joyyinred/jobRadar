@@ -26,6 +26,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "django_prometheus",            # Day 11: /metrics + automatic HTTP metrics
     "ads",
+    "tracking",                     # your job applications (per user; uses ads, never the reverse)
 ]
 
 MIDDLEWARE = [

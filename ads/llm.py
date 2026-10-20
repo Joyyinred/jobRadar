@@ -27,11 +27,12 @@ with exactly these keys:
 
 {
   "title": string,                  // the job title as the ad states it
-  "title_en": string,               // that title in English (the same if it already is)
+  "title_en": string,               // that title in English (the same if it already is; see below)
   "company": string,                // the hiring company
   "city": string,                   // where the job is; "remote" if fully remote
   "seniority": "intern" | "junior" | "mid" | "senior" | "unspecified",
   "employment_type": "permanent" | "fixed_term" | "internship" | "thesis" | "unspecified",
+  "degree_level": "bachelor" | "master" | "either" | "unspecified",
   "required_skills": [string],      // technical skills the ad REQUIRES
   "nice_to_have_skills": [string],  // skills listed as a plus / meriterande
   "swedish_requirement": "required" | "preferred" | "not_mentioned"
@@ -44,6 +45,21 @@ employment_type:
 - "permanent": tillsvidareanställning / permanent position.
 - "fixed_term": visstidsanställning, consultant assignment with an end date,
   temporary or project employment.
+
+title_en: translate, don't add. "Examensarbete" / "Exjobb" is "Thesis" — not
+"Master's Thesis": the level goes in degree_level, and only if the ad says it.
+
+degree_level: the university level the ad names, for a thesis, an
+internship or a job alike. Only what the ad says — don't infer it.
+- "master": only master's level. Master's thesis, a "30 hp" / "30 credits"
+  thesis, "avancerad nivå", civilingenjör or MSc students, "master's degree".
+- "bachelor": only bachelor's level. Kandidatarbete, a "15 hp" thesis,
+  högskoleingenjör or BSc students, "bachelor's degree" / kandidatexamen.
+- "either": the ad names both ("bachelor's or master's thesis", "15 or 30 hp",
+  "kandidat- eller masterexamen", and in job ads too: "civil- eller
+  högskoleingenjör", "högskole- eller civilingenjörsexamen").
+- "unspecified": no level named. "A relevant university degree"
+  (akademisk examen, högskoleexamen) without a level is "unspecified".
 
 Skills:
 - A skill goes in exactly one of the two lists, never both.
@@ -78,6 +94,7 @@ def mock_llm(raw_text):
         "city": "Stockholm",
         "seniority": "junior",
         "employment_type": "permanent",
+        "degree_level": "bachelor",
         "required_skills": ["Python", "Django", "PostgreSQL"],
         "nice_to_have_skills": ["Docker", "AWS"],
         "swedish_requirement": "preferred",
@@ -182,7 +199,9 @@ TRANSLATE_PROMPT = """You translate job titles to English.
 You get a JSON array of job titles, mostly Swedish. Return ONLY a JSON array
 of the same length, in the same order: each title in English. A title that is
 already English stays exactly as it is. Keep names, product names and
-abbreviations (AWS, .NET, SAP) unchanged. No markdown, no explanation."""
+abbreviations (AWS, .NET, SAP) unchanged. Translate, don't add:
+"Examensarbete" / "Exjobb" is "Thesis", not "Master's Thesis" — the title
+doesn't say which level. No markdown, no explanation."""
 
 
 def translate_titles(titles):

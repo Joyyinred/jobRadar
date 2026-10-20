@@ -248,6 +248,12 @@ select:focus {
   color: #fff;
 }
 
+.tag-degree {
+  background: var(--thesis-soft);
+  color: var(--text);
+  border: 1px solid var(--thesis);
+}
+
 .tag-closed {
   background: var(--error-bg);
   color: var(--text-muted);

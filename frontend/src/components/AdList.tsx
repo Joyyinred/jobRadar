@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { type AdPage, listAds, type OccupationGroup } from '../api'
-import { EMPLOYMENT_LABELS, label, ORIGIN_LABELS, SENIORITY_LABELS } from '../labels'
+import { DEGREE_LABELS, EMPLOYMENT_LABELS, label, ORIGIN_LABELS, SENIORITY_LABELS } from '../labels'
 import { ErrorBox } from './ErrorBox'
 
 type Props = {
@@ -19,6 +19,7 @@ export function AdList({ groups, selectedId, onSelect, refreshKey }: Props) {
   const [employment, setEmployment] = useState('')
   const [group, setGroup] = useState('')
   const [origin, setOrigin] = useState('')
+  const [degree, setDegree] = useState('')
   const [page, setPage] = useState(1)
   const [data, setData] = useState<AdPage | null>(null)
   const [error, setError] = useState<unknown>(null)
@@ -31,7 +32,7 @@ export function AdList({ groups, selectedId, onSelect, refreshKey }: Props) {
     // so this (now outdated) reply is dropped instead of overwriting the
     // newer one. The old page needed a hand-made request counter for this.
     let ignore = false
-    listAds({ seniority: split(seniority), employment_type: employment, occupation_group: group, origin, page })
+    listAds({ seniority: split(seniority), employment_type: employment, occupation_group: group, origin, degree_level: degree, page })
       .then((latest) => {
         if (!ignore) {
           setData(latest)
@@ -42,7 +43,7 @@ export function AdList({ groups, selectedId, onSelect, refreshKey }: Props) {
     return () => {
       ignore = true
     }
-  }, [seniority, employment, group, origin, page, refreshKey])
+  }, [seniority, employment, group, origin, degree, page, refreshKey])
 
   /** A new filter starts again at page 1 — page 8 of the old filter may not
    *  exist under the new one. Done here, in the event, not in an effect:
@@ -86,6 +87,12 @@ export function AdList({ groups, selectedId, onSelect, refreshKey }: Props) {
             </option>
           ))}
         </select>
+        {/* "Master's level" also lists ads open to either level (the API does that). */}
+        <select value={degree} onChange={filter(setDegree)}>
+          <option value="">All degree levels</option>
+          <option value="master">Master's level</option>
+          <option value="bachelor">Bachelor's level</option>
+        </select>
         <select value={group} onChange={filter(setGroup)}>
           <option value="">All job roles</option>
           {groups.map((g) => (
@@ -120,6 +127,9 @@ export function AdList({ groups, selectedId, onSelect, refreshKey }: Props) {
                   <span className={`tag employment-${ad.employment_type}`}>
                     {label(EMPLOYMENT_LABELS, ad.employment_type)}
                   </span>
+                )}
+                {ad.degree_level && ad.degree_level !== 'unspecified' && (
+                  <span className="tag tag-degree">{label(DEGREE_LABELS, ad.degree_level)}</span>
                 )}
               </span>
             </button>

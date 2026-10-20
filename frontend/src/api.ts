@@ -17,6 +17,7 @@ export type AdSummary = {
   company: string | null
   seniority: string // "" until parsed
   employment_type: string
+  degree_level: string // bachelor | master | either | unspecified ("" until parsed)
   occupation_group: string // "" for pasted ads
   origin: Origin
   closed: boolean // taken down, or past its deadline
@@ -42,6 +43,7 @@ export type AdResult = {
   city: string
   seniority: string
   employment_type: string
+  degree_level: string
   occupation_group: string
   required_skills: string[]
   nice_to_have_skills: string[]
@@ -155,6 +157,7 @@ export type AdFilters = {
   employment_type?: string
   occupation_group?: string
   origin?: string
+  degree_level?: string // "master" also matches "either", same for "bachelor"
   page?: number
 }
 

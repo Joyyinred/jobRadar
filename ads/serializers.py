@@ -103,6 +103,7 @@ class AdListQuerySerializer(serializers.Serializer):
     employment_type = serializers.ChoiceField(choices=EMPLOYMENT_TYPES, required=False)
     occupation_group = serializers.CharField(max_length=32, required=False)
     origin = serializers.ChoiceField(choices=["user", "import"], required=False)
+    degree_level = serializers.ChoiceField(choices=["bachelor", "master"], required=False)
 
 
 # --- Out ---------------------------------------------------------------------
@@ -124,6 +125,7 @@ class AdSummarySerializer(serializers.Serializer):
     # Shown next to each ad in the list, and what the list filters on.
     seniority = serializers.CharField()
     employment_type = serializers.CharField()
+    degree_level = serializers.CharField()
     occupation_group = serializers.SerializerMethodField()
     origin = serializers.CharField()  # "user" (added by you) or "import"
     closed = serializers.SerializerMethodField()
@@ -157,6 +159,7 @@ class AdResultSerializer(serializers.Serializer):
     city = serializers.CharField()
     seniority = serializers.CharField()
     employment_type = serializers.CharField()
+    degree_level = serializers.CharField()  # bachelor | master | either | unspecified
     occupation_group = serializers.SerializerMethodField()  # JobTech's group; "" for pasted ads
     required_skills = serializers.SerializerMethodField()
     nice_to_have_skills = serializers.SerializerMethodField()

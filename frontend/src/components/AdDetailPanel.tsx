@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { type AdDetail, getAd, retryAd } from '../api'
-import { EMPLOYMENT_LABELS, label, SENIORITY_LABELS, SWEDISH_LABELS } from '../labels'
+import { DEGREE_LABELS, EMPLOYMENT_LABELS, label, SENIORITY_LABELS, SWEDISH_LABELS } from '../labels'
 import { ErrorBox } from './ErrorBox'
 import { ApplyLinks, FullAd } from './Listing'
 
@@ -110,6 +110,9 @@ export function AdDetailPanel({ adId, onChanged }: Props) {
             <span className={`tag employment-${ad.result.employment_type}`}>
               {label(EMPLOYMENT_LABELS, ad.result.employment_type)}
             </span>
+            {ad.result.degree_level && ad.result.degree_level !== 'unspecified' && (
+              <span className="tag tag-degree">{label(DEGREE_LABELS, ad.result.degree_level)}</span>
+            )}
             <span className="tag">{label(SWEDISH_LABELS, ad.result.swedish_requirement)}</span>
             {ad.result.occupation_group && <span className="tag tag-muted">{ad.result.occupation_group}</span>}
           </div>

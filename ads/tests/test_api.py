@@ -54,7 +54,7 @@ def test_list_returns_summaries_newest_first(api, enqueued):
     assert [a["id"] for a in body] == [new.id, old.id]
     assert body[0] == {
         "id": new.id, "status": "pending", "title": None, "title_en": None, "company": None,
-        "seniority": "", "employment_type": "", "occupation_group": "",  # not parsed yet
+        "seniority": "", "employment_type": "", "degree_level": "", "occupation_group": "",  # not parsed yet
         "closed": False,
         "origin": "user",
     }
@@ -66,7 +66,7 @@ def test_get_completed_ad_includes_result(api):
     assert body["status"] == "completed"
     assert body["result"]["title"] == "Dev"
     assert list(body["result"]) == [
-        "title", "title_en", "company", "city", "seniority", "employment_type", "occupation_group",
+        "title", "title_en", "company", "city", "seniority", "employment_type", "degree_level", "occupation_group",
         "required_skills", "nice_to_have_skills", "swedish_requirement",
     ]  # the order the page's table relies on
 

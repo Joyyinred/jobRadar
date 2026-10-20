@@ -16,6 +16,14 @@ export const EMPLOYMENT_LABELS: Record<string, string> = {
   unspecified: 'Type not stated',
 }
 
+// The level the ad names: for a thesis, which thesis; for a job, which degree.
+export const DEGREE_LABELS: Record<string, string> = {
+  master: "Master's",
+  bachelor: "Bachelor's",
+  either: "Bachelor's or master's",
+  unspecified: 'Level not stated',
+}
+
 export const SWEDISH_LABELS: Record<string, string> = {
   required: 'Swedish required',
   preferred: 'Swedish a plus',

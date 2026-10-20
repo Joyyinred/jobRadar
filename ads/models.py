@@ -109,6 +109,13 @@ class JobAd(models.Model):
     # JobTech can't tell us this — thesis ads there are "Behovsanställning".
     employment_type = models.CharField(max_length=20, blank=True, default="", db_index=True)
     swedish_requirement = models.CharField(max_length=20, blank=True, default="")
+    # From the LLM: the university level the ad names — bachelor | master |
+    # either | unspecified. For a thesis: which thesis (15 or 30 hp). For an
+    # internship: which students. For a job: the degree it asks for.
+    # Literal ("what does the ad say"), not "who qualifies": that differs by
+    # kind of ad (a master student fits a bachelor-level job, not a
+    # bachelor's thesis) and is for the reader to judge.
+    degree_level = models.CharField(max_length=20, blank=True, default="", db_index=True)
 
     # Foreign key: store the company's id, not its name.
     # null=True: a failed parse, or an ad that doesn't name the company.

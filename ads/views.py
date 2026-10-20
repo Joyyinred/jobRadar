@@ -46,6 +46,7 @@ def list_ads(request):
         employment_type=data.get("employment_type"),
         occupation_group=data.get("occupation_group"),
         origin=data.get("origin"),
+        degree_level=data.get("degree_level"),
     )
     # The paginator adds LIMIT/OFFSET to the query (plus one COUNT), so only
     # this page's 20 rows are read from the database — not all, then sliced.

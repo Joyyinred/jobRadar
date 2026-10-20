@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 # --- Reading ----------------------------------------------------------------
 
-def list_ads(seniority=None, employment_type=None, occupation_group=None, origin=None):
+def list_ads(seniority=None, employment_type=None, occupation_group=None, origin=None, degree_level=None):
     """Ads, newest first, optionally filtered. A query, not rows yet: the view
     pages it (pagination.py), so only one page is ever read.
 
@@ -38,6 +38,8 @@ def list_ads(seniority=None, employment_type=None, occupation_group=None, origin
     employment_type:  e.g. "thesis"
     occupation_group: a JobTech group code, e.g. "DJh5_yyF_hEM"
     origin:           "user" (added by you) or "import"
+    degree_level:     "master" or "bachelor" — also matches ads open to
+                      "either": a master student looking for a thesis wants those too
     """
     # select_related("company") fetches each ad's company in the SAME query
     # (a SQL JOIN). Without it, ad.company.name would run one extra query per
@@ -53,6 +55,8 @@ def list_ads(seniority=None, employment_type=None, occupation_group=None, origin
         ads = ads.filter(occupation_group_code=occupation_group)
     if origin:
         ads = ads.filter(origin=origin)
+    if degree_level:
+        ads = ads.filter(degree_level__in=[degree_level, "either"])
     return ads
 
 
@@ -456,6 +460,7 @@ def save_parsed(ad, data):
     ad.city = data.get("city") or ""
     ad.seniority = data.get("seniority") or ""
     ad.employment_type = data.get("employment_type") or ""
+    ad.degree_level = data.get("degree_level") or ""
     ad.swedish_requirement = data.get("swedish_requirement") or ""
     ad.save()
 

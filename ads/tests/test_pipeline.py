@@ -30,6 +30,7 @@ def test_post_then_get_shows_the_parsed_ad(api, celery_eager):
         "city": "Stockholm",
         "seniority": "junior",
         "employment_type": "permanent",
+        "degree_level": "bachelor",
         "occupation_group": "",  # pasted ads have no JobTech group
         "required_skills": ["Python", "Django", "PostgreSQL"],
         "nice_to_have_skills": ["Docker", "AWS"],

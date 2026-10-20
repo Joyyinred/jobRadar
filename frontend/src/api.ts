@@ -45,8 +45,10 @@ export type AdResult = {
   employment_type: string
   degree_level: string
   occupation_group: string
-  required_skills: string[]
+  required_skills: string[] // each required on its own
+  required_one_of: string[][] // [["Python", "Java", "Go"]]: any one of each group
   nice_to_have_skills: string[]
+  nice_to_have_one_of: string[][]
   swedish_requirement: string
 }
 
@@ -83,7 +85,15 @@ export type ImportJob = {
   error: string
 }
 
-export type SkillStat = { name: string; ads: number; share: number; required: number; nice_to_have: number }
+/** required + one_of + nice_to_have = ads */
+export type SkillStat = {
+  name: string
+  ads: number
+  share: number
+  required: number // asked for on its own
+  one_of: number // required, but as one of several alternatives
+  nice_to_have: number
+}
 
 export type MarketSkills = {
   sample_size: number

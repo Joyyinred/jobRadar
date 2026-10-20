@@ -35,6 +35,7 @@ with exactly these keys:
   "degree_level": "bachelor" | "master" | "either" | "unspecified",
   "required_skills": [string],      // technical skills the ad REQUIRES
   "nice_to_have_skills": [string],  // skills listed as a plus / meriterande
+  "alternatives": [[string]],       // groups from the lists above: "any one of these" (see below)
   "swedish_requirement": "required" | "preferred" | "not_mentioned"
 }
 
@@ -63,6 +64,19 @@ internship or a job alike. Only what the ad says — don't infer it.
 
 Skills:
 - A skill goes in exactly one of the two lists, never both.
+- List EVERY skill the ad names in required_skills / nice_to_have_skills —
+  alternatives included, each one on its own.
+- alternatives is a note on top of those lists, nothing more: when the ad
+  accepts ANY ONE of several skills, also put them together as a group here.
+  Signs: "one of", "either ... or", "X or Y", "X, Y or Z", "such as X, Y or Z",
+  "at least one ... such as", "och/eller", "något av", "X eller Y". Examples:
+    "Experience in one of Python, Java or Go, and Docker"
+      -> required_skills ["Docker", "Python", "Java", "Go"],
+         alternatives [["Python", "Java", "Go"]]
+    "a larger cloud environment, such as AWS, Azure or Google Cloud"
+      -> required_skills [..., "AWS", "Azure", "GCP"], alternatives [["AWS", "Azure", "GCP"]]
+  Skills joined by "and" / "och", or simply listed, are not alternatives.
+  When unsure, leave them out of alternatives: a missing note is harmless.
 - Use short, common skill names in ENGLISH, even when the ad is in Swedish
   ("Troubleshooting", not "felsökning"; "Cybersecurity", not "cybersäkerhet";
   "Git", not "version control systems").

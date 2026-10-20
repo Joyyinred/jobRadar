@@ -316,6 +316,14 @@ select:focus {
   color: #fff;
 }
 
+.chip-group-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.8;
+  margin-right: 2px;
+}
+
 .chip-nice {
   background: var(--accent-soft);
   color: var(--accent);
@@ -576,9 +584,18 @@ select:focus {
   overflow: hidden;
 }
 
+.bar {
+  display: inline-flex; /* the segments sit side by side */
+}
+
 .bar-required {
   height: 100%;
   background: var(--required);
+}
+
+.bar-one-of {
+  height: 100%;
+  background: var(--one-of);
 }
 
 .bar-label {

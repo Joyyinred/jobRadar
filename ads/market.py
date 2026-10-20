@@ -62,13 +62,19 @@ def skill_frequency(seniority=None, level=None, top=20, occupation_group=None):
 
     # One SQL query: group the skill links by lower-cased name ("Cloud" and
     # "cloud" are one skill), count DISTINCT ads per group (an ad listing a
-    # skill twice counts once), split by level.
+    # skill twice counts once), split by how firmly the ad asks for it:
+    #   required      on its own: you need it
+    #   one_of        required, but as one of several ("Python, Java or Go")
+    #   nice_to_have  a plus
+    # The three add up to `ads`. Before one_of existed, an ad offering five
+    # languages to choose from counted as requiring all five.
     links = links.annotate(key=Lower("skill__name")).exclude(key__in=LANGUAGE_NAMES)
     rows = list(
         links.values("key")
         .annotate(
             ads=Count("ad", distinct=True),
-            required=Count("ad", filter=Q(level="required"), distinct=True),
+            required=Count("ad", filter=Q(level="required", alternative_group__isnull=True), distinct=True),
+            one_of=Count("ad", filter=Q(level="required", alternative_group__isnull=False), distinct=True),
             nice_to_have=Count("ad", filter=Q(level="nice_to_have"), distinct=True),
         )
         .order_by("-ads", "key")[:top]
@@ -88,6 +94,7 @@ def skill_frequency(seniority=None, level=None, top=20, occupation_group=None):
                 "ads": row["ads"],
                 "share": round(row["ads"] / sample_size, 3),
                 "required": row["required"],
+                "one_of": row["one_of"],
                 "nice_to_have": row["nice_to_have"],
             }
             for row in rows

@@ -469,17 +469,48 @@ def save_parsed(ad, data):
     # Start clean: a retry (or a half-finished earlier attempt) must not mix
     # old skill links with new ones. The Skill rows themselves stay.
     ad.ad_skills.all().delete()
-    # "required" first: if the LLM lists a skill in both lists (or two names
-    # collapse into one canonical skill), the first link wins — required.
+
+    # 1. Every skill in the two lists, exactly as before alternatives existed.
+    #    "required" first: if the LLM lists a skill in both lists (or two names
+    #    collapse into one canonical skill), the first link wins — required.
+    #    The alias table decides the names ("Microsoft Azure" -> "Azure",
+    #    "C/C++" -> "C" and "C++"), not the LLM.
+    links = {}  # skill id -> its AdSkill row in this ad
     for level, key in [("required", "required_skills"), ("nice_to_have", "nice_to_have_skills")]:
         for name in data.get(key) or []:
-            # The alias table decides the name ("Microsoft Azure" -> "Azure",
-            # "C/C++" -> "C" and "C++"), not the LLM.
+            if not isinstance(name, str):
+                continue
             for canonical in canonical_names(name):
                 skill = skill_named(canonical)
-                # get_or_create: two names can now land on one skill, and the
-                # unique (ad, skill) constraint would reject the second link.
-                AdSkill.objects.get_or_create(ad=ad, skill=skill, defaults={"level": level})
+                if skill.id not in links:
+                    links[skill.id] = AdSkill.objects.create(ad=ad, skill=skill, level=level)
+
+    # 2. The "alternatives" note: which of those skills the ad accepts any ONE
+    #    of. It only ever ADDS information. A wrong or missing note leaves the
+    #    skills above exactly as they were — the worst case is how things were
+    #    before. (A first version had the model MOVE skills into groups; it
+    #    sometimes kept only the first of "Go or Python" and lost the rest.)
+    groups = 0
+    for group in data.get("alternatives") or []:
+        if not isinstance(group, list):
+            continue
+        members = []
+        for name in group:
+            if isinstance(name, str):
+                members += [s for s in map(skill_named, canonical_names(name)) if s not in members]
+        # A skill named only in the note is still a skill the ad asks for:
+        # add it, at the level of the group's other members.
+        level = next((links[s.id].level for s in members if s.id in links), "required")
+        for skill in members:
+            if skill.id not in links:
+                links[skill.id] = AdSkill.objects.create(ad=ad, skill=skill, level=level)
+        # The group: its members at that level not already in another group.
+        free = [links[s.id] for s in members if links[s.id].level == level and links[s.id].alternative_group is None]
+        if len(free) >= 2:  # "one of" a single skill is just that skill
+            groups += 1
+            for link in free:
+                link.alternative_group = groups
+                link.save(update_fields=["alternative_group"])
 
 
 def skill_named(name):

@@ -43,7 +43,9 @@ def test_share_is_ads_with_the_skill_over_all_matching_ads():
     make_ads(30, start=10)  # no skills
     result = market.skill_frequency(seniority=["junior"])
     assert result["sample_size"] == 40
-    assert by_name(result)["Python"] == {"name": "Python", "ads": 10, "share": 0.25, "required": 10, "nice_to_have": 0}
+    assert by_name(result)["Python"] == {
+        "name": "Python", "ads": 10, "share": 0.25, "required": 10, "one_of": 0, "nice_to_have": 0,
+    }
 
 
 def test_only_the_asked_seniority_is_counted():

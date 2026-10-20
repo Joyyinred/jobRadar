@@ -26,9 +26,34 @@ def no_real_llm(monkeypatch):
     monkeypatch.setenv("LLM_FAKE_DELAY", "0")
 
 
+@pytest.fixture(autouse=True)
+def fast_password_hashing(settings):
+    """Real password hashing (PBKDF2, ~1,000,000 rounds) is slow ON PURPOSE —
+    it makes guessing stolen hashes expensive — and every test makes a user.
+    Tests don't need that protection: MD5 makes the suite fast again.
+    Never in settings.py."""
+    settings.PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
+
+
 @pytest.fixture
-def api():
-    """A fake browser that calls the API in-process (no server needed)."""
+def user(db, django_user_model):
+    return django_user_model.objects.create_user(username="joy", password="a-test-password")
+
+
+@pytest.fixture
+def api(user):
+    """A fake browser that calls the API in-process (no server needed),
+    logged in as `user` — most tests are about what a user can do.
+    (force_login skips the password check and, like APIClient by default,
+    the CSRF check: test_auth.py tests those for real.)"""
+    client = APIClient()
+    client.force_login(user)
+    return client
+
+
+@pytest.fixture
+def anon_api():
+    """The same, not logged in: a visitor."""
     return APIClient()
 
 

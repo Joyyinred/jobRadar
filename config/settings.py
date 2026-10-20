@@ -20,7 +20,8 @@ ALLOWED_HOSTS = ["*"]
 
 INSTALLED_APPS = [
     "django.contrib.contenttypes",  # required by the ORM's migration machinery
-    "django.contrib.auth",          # contenttypes depends on it
+    "django.contrib.auth",          # users and password hashing
+    "django.contrib.sessions",      # login sessions, stored in the database
     "django.contrib.staticfiles",
     "rest_framework",
     "django_prometheus",            # Day 11: /metrics + automatic HTTP metrics
@@ -31,8 +32,10 @@ MIDDLEWARE = [
     # Day 11: Before/After wrap everything else, so the timing covers the whole
     # request. They record request counts, latency and status codes per view.
     "django_prometheus.middleware.PrometheusBeforeMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",  # reads the sessionid cookie
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",  # session -> request.user
     "django_prometheus.middleware.PrometheusAfterMiddleware",
 ]
 
@@ -75,16 +78,33 @@ USE_TZ = True                   # store UTC, display in TIME_ZONE
 
 STATIC_URL = "static/"
 
-# No authentication yet (single local user, see DESIGN_DOC §3.2), so DRF's
-# browsable API and JSON renderer are enough. Session/CSRF come with real auth.
+# The session cookie: HttpOnly (JavaScript can't read it, so an XSS bug can't
+# steal a login) and SameSite=Lax (other sites' forms don't send it along).
+# Both are Django's defaults; written out because they are the point.
+# Secure (HTTPS only) is switched on with DEBUG off, i.e. when deployed.
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_AGE = 14 * 24 * 60 * 60  # two weeks, then log in again
+# The page reads the csrftoken cookie to send it back as X-CSRFToken, so this
+# one cookie must NOT be HttpOnly (it isn't by default). It's no secret on
+# its own: other sites can't read our cookies, which is what makes it work.
+# Vite (:5173) forwards /api to Django; Django must trust that origin for CSRF.
+CSRF_TRUSTED_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
+
+# Login: Django sessions (see ads/auth.py for why not JWT).
+#   Anyone may READ (browse ads, market stats). Anything that writes or costs
+#   money (adding ads, imports, retries -> LLM calls) needs a logged-in user.
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
         "rest_framework.renderers.BrowsableAPIRenderer",
     ],
-    "DEFAULT_AUTHENTICATION_CLASSES": [],
-    "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.AllowAny"],
-    "UNAUTHENTICATED_USER": None,
+    "DEFAULT_AUTHENTICATION_CLASSES": ["ads.authentication.SessionAuthentication"],
+    "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticatedOrReadOnly"],
+    # Guessing passwords: at most 5 login attempts a minute per IP address.
+    "DEFAULT_THROTTLE_RATES": {"login": "5/min"},
     # Day 8: every error, ours or DRF's, leaves through this one function in
     # one JSON shape: {"type", "code", "message", "detail"}.
     "EXCEPTION_HANDLER": "ads.exceptions.exception_handler",

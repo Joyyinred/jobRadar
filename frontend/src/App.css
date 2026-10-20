@@ -44,6 +44,15 @@
   align-items: start;
 }
 
+.user {
+  color: var(--text-muted);
+  margin-left: 8px;
+}
+
+.login-card {
+  max-width: 400px;
+}
+
 .layout.single {
   grid-template-columns: minmax(0, 1fr);
 }

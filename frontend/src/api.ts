@@ -114,12 +114,27 @@ export class ApiError extends Error {
 
 // ---- The one place that calls fetch() ------------------------------------------
 
+/** Django's csrftoken cookie. Sent back as a header on every write: another
+ *  site can make the browser send our cookies, but can't READ them — so it
+ *  can't send this header. That's the whole CSRF defence. (The session cookie
+ *  itself is HttpOnly: this code can't see it, and doesn't need to.) */
+function csrfToken(): string {
+  return document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/)?.[1] ?? ''
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<{ data: T; status: number }> {
+  const writes = (init?.method ?? 'GET') !== 'GET'
   let response: Response
   try {
     response = await fetch(url, {
       ...init,
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...init?.headers },
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        // Read fresh each time: Django issues a new token when you log in.
+        ...(writes ? { 'X-CSRFToken': csrfToken() } : {}),
+        ...init?.headers,
+      },
     })
   } catch {
     // Network down, server restarting...
@@ -182,6 +197,21 @@ export const getImport = async (id: number) => (await request<ImportJob>(`/api/i
 export const getOccupationGroups = async () => (await request<OccupationGroup[]>('/api/occupation-groups/')).data
 
 export type MarketFilters = { seniority?: string[]; level?: string; occupation_group?: string; top?: number }
+
+// ---- Logging in ----------------------------------------------------------------
+
+export type User = { username: string }
+type Me = { user: User | null }
+
+/** Who's logged in (null = nobody). Call it first: it also sets the csrftoken cookie. */
+export const getMe = async () => (await request<Me>('/api/auth/me/')).data.user
+
+export const logIn = async (username: string, password: string) =>
+  (await request<Me>('/api/auth/login/', post({ username, password }))).data.user
+
+export const logOut = async () => {
+  await request<Me>('/api/auth/logout/', post({}))
+}
 
 export const getMarketSkills = async (filters: MarketFilters) =>
   (await request<MarketSkills>(`/api/market/skills/${query(filters)}`)).data

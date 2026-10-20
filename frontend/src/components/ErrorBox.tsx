@@ -22,7 +22,9 @@ export function ErrorBox({ error, onConfirm }: Props) {
   if (!error) return null
   const apiError = error instanceof ApiError ? error : null
   const type = apiError?.type ?? 'error'
-  const message = apiError?.message ?? String(error)
+  // 401: not logged in. Say what to do, not DRF's "credentials were not provided".
+  const message =
+    apiError?.status === 401 ? 'Log in to do this.' : (apiError?.message ?? String(error))
 
   return (
     <div className={`alert alert-${type}`} role="alert">

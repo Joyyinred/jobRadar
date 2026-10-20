@@ -3,11 +3,14 @@ import { type AdDetail, getAd, retryAd } from '../api'
 import { DEGREE_LABELS, EMPLOYMENT_LABELS, label, SENIORITY_LABELS, SWEDISH_LABELS } from '../labels'
 import { ErrorBox } from './ErrorBox'
 import { ApplyLinks, FullAd } from './Listing'
+import { TrackBox } from './TrackBox'
 
 type Props = {
   adId: number
   /** Called when the ad changes state (finished parsing, retried), so the list can refresh. */
   onChanged: () => void
+  /** Logged in: show "My application" (tracking is per user). */
+  loggedIn: boolean
 }
 
 const POLL_MS = 3000
@@ -15,7 +18,7 @@ const isFinal = (ad: AdDetail | null) => ad?.status === 'completed' || ad?.statu
 
 /** One ad. While it's still pending/processing, keeps asking until it's done
  *  (Day 6 polling) — and stops by itself when you select another ad. */
-export function AdDetailPanel({ adId, onChanged }: Props) {
+export function AdDetailPanel({ adId, onChanged, loggedIn }: Props) {
   const [ad, setAd] = useState<AdDetail | null>(null)
   // When the ad was loaded: "days left" counts from here. Reading the clock
   // during render would make rendering impure (a different result each time).
@@ -118,6 +121,7 @@ export function AdDetailPanel({ adId, onChanged }: Props) {
           </div>
 
           {ad.listing && <ApplyLinks listing={ad.listing} now={loadedAt} />}
+          {loggedIn && <TrackBox adId={adId} onChanged={onChanged} />}
 
           <h3>Required</h3>
           <SkillChips skills={ad.result.required_skills} kind="required" />

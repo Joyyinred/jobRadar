@@ -263,6 +263,11 @@ select:focus {
   border: 1px solid var(--thesis);
 }
 
+.tag-tracked {
+  background: var(--text);
+  color: var(--surface);
+}
+
 .tag-closed {
   background: var(--error-bg);
   color: var(--text-muted);
@@ -403,6 +408,39 @@ select:focus {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* "My application" in the ad panel */
+.track-box {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history {
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.small {
+  font-size: 0.85rem;
+}
+
+.finished {
+  margin-top: 16px;
+}
+
+.finished summary {
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.applications td {
+  vertical-align: top;
 }
 
 /* Links and deadline at the top of an ad */

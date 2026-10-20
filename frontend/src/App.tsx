@@ -1,19 +1,21 @@
 import { useCallback, useEffect, useState } from 'react'
-import { getMe, getOccupationGroups, logOut, type OccupationGroup, type User } from './api'
+import { getApplications, getMe, getOccupationGroups, logOut, type OccupationGroup, type User } from './api'
 import { AdDetailPanel } from './components/AdDetailPanel'
 import { AdList } from './components/AdList'
 import { AddAdPanel } from './components/AddAdPanel'
+import { ApplicationsPanel } from './components/ApplicationsPanel'
 import { LoginPanel } from './components/LoginPanel'
 import { MarketPanel } from './components/MarketPanel'
 import { SearchImportPanel } from './components/SearchImportPanel'
 import './App.css'
 
-type Page = 'ads' | 'add' | 'market' | 'login'
+type Page = 'ads' | 'add' | 'market' | 'applications' | 'login'
 
-const PAGES: { id: Page; label: string }[] = [
+const PAGES: { id: Page; label: string; loggedIn?: boolean }[] = [
   { id: 'ads', label: 'Ads' },
   { id: 'add', label: 'Add ads' },
   { id: 'market', label: 'Market' },
+  { id: 'applications', label: 'My applications', loggedIn: true }, // personal: only when logged in
 ]
 
 /** The whole app. Holds only what several pages share: which page is open,
@@ -29,6 +31,9 @@ export default function App() {
   const [user, setUser] = useState<User | null | undefined>(undefined)
   // Where to go back to after logging in.
   const [afterLogin, setAfterLogin] = useState<Page>('ads')
+  // Your status per ad id, for the tags in the ad list. One small request for
+  // all of them, rather than asking per ad.
+  const [tracked, setTracked] = useState<Record<number, string>>({})
 
   // useCallback: the same function object on every render, so panels that
   // depend on it (e.g. in a useEffect) don't restart for no reason.
@@ -37,6 +42,14 @@ export default function App() {
   useEffect(() => {
     getOccupationGroups().then(setGroups).catch(() => setGroups([]))
   }, [refreshKey])
+
+  useEffect(() => {
+    if (!user) return // logged out: `trackedNow` below is empty, nothing to fetch
+    getApplications()
+      .then(({ results }) => setTracked(Object.fromEntries(results.map((app) => [app.ad.id, app.status]))))
+      .catch(() => setTracked({}))
+  }, [user, refreshKey])
+  const trackedNow = user ? tracked : {}
 
   // Who's logged in — asked once. The session cookie is HttpOnly, so the page
   // can't look for itself; this also gets the csrftoken cookie for later POSTs.
@@ -54,6 +67,7 @@ export default function App() {
       await logOut()
     } finally {
       setUser(null) // logged out on screen even if the server didn't answer
+      if (page === 'applications') setPage('ads')
     }
   }
 
@@ -72,7 +86,7 @@ export default function App() {
           Job<span>Radar</span>
         </h1>
         <nav className="row">
-          {PAGES.map(({ id, label }) => (
+          {PAGES.filter((p) => !p.loggedIn || user).map(({ id, label }) => (
             <button key={id} className={page === id ? 'nav active' : 'nav'} onClick={() => setPage(id)}>
               {label}
             </button>
@@ -96,7 +110,13 @@ export default function App() {
       {page === 'ads' && (
         <main className="layout">
           <div className="column">
-            <AdList groups={groups} selectedId={selectedId} onSelect={setSelectedId} refreshKey={refreshKey} />
+            <AdList
+              groups={groups}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              refreshKey={refreshKey}
+              tracked={trackedNow}
+            />
           </div>
           <div className="column sticky">
             {selectedId === null ? (
@@ -110,7 +130,7 @@ export default function App() {
             ) : (
               // key: a different ad gets a fresh panel (fresh state), instead
               // of briefly showing the previous ad while the new one loads.
-              <AdDetailPanel key={selectedId} adId={selectedId} onChanged={refreshList} />
+              <AdDetailPanel key={selectedId} adId={selectedId} onChanged={refreshList} loggedIn={!!user} />
             )}
           </div>
         </main>
@@ -125,6 +145,12 @@ export default function App() {
             </button>
             .
           </section>
+        </main>
+      )}
+
+      {page === 'applications' && user && (
+        <main className="layout single">
+          <ApplicationsPanel onOpenAd={showAd} refreshKey={refreshKey} onChanged={refreshList} />
         </main>
       )}
 

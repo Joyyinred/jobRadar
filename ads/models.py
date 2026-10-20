@@ -162,6 +162,13 @@ class AdSkill(models.Model):
     # nice-to-have in another. It describes the relationship.
     level = models.CharField(max_length=20, choices=LEVEL_CHOICES)
 
+    # "Experience in ONE OF Python, Java or Go": those three links share a
+    # group number (1, 2, ... within this ad); knowing any one of them is
+    # enough. Null for a skill asked for on its own. Without this, an ad
+    # offering five languages to choose from counted as requiring all five,
+    # and the market statistics overstated every one of them.
+    alternative_group = models.PositiveSmallIntegerField(null=True, blank=True)
+
     class Meta:
         # The same skill can't be listed twice for the same ad.
         constraints = [

@@ -161,8 +161,10 @@ class AdResultSerializer(serializers.Serializer):
     employment_type = serializers.CharField()
     degree_level = serializers.CharField()  # bachelor | master | either | unspecified
     occupation_group = serializers.SerializerMethodField()  # JobTech's group; "" for pasted ads
-    required_skills = serializers.SerializerMethodField()
+    required_skills = serializers.SerializerMethodField()      # each one required on its own
+    required_one_of = serializers.SerializerMethodField()      # [["Python", "Java", "Go"], ...]: any one of each
     nice_to_have_skills = serializers.SerializerMethodField()
+    nice_to_have_one_of = serializers.SerializerMethodField()
     swedish_requirement = serializers.CharField()
 
     def get_company(self, ad):
@@ -174,15 +176,31 @@ class AdResultSerializer(serializers.Serializer):
     def get_required_skills(self, ad):
         return self._skill_names(ad, "required")
 
+    def get_required_one_of(self, ad):
+        return self._groups(ad, "required")
+
     def get_nice_to_have_skills(self, ad):
         return self._skill_names(ad, "nice_to_have")
 
-    def _skill_names(self, ad, level):
+    def get_nice_to_have_one_of(self, ad):
+        return self._groups(ad, "nice_to_have")
+
+    def _links(self, ad):
         # All AdSkill rows of this ad, with their Skill joined in, read once
-        # and reused for both lists.
+        # and reused for all four lists.
         if not hasattr(self, "_ad_skills"):
-            self._ad_skills = list(ad.ad_skills.select_related("skill"))
-        return [s.skill.name for s in self._ad_skills if s.level == level]
+            self._ad_skills = list(ad.ad_skills.select_related("skill").order_by("id"))
+        return self._ad_skills
+
+    def _skill_names(self, ad, level):
+        return [s.skill.name for s in self._links(ad) if s.level == level and s.alternative_group is None]
+
+    def _groups(self, ad, level):
+        groups = {}
+        for s in self._links(ad):
+            if s.level == level and s.alternative_group is not None:
+                groups.setdefault(s.alternative_group, []).append(s.skill.name)
+        return [groups[number] for number in sorted(groups)]
 
 
 class AdListingSerializer(serializers.Serializer):

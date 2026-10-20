@@ -21,6 +21,12 @@ from ads.models import AdSkill, Skill
 from ads.skill_aliases import CANONICAL_NAMES, canonical_names, case_matters
 
 
+def firmness(link):
+    """How firmly an ad asks for a skill, to keep the firmer of two links:
+    required beats nice-to-have; on its own beats "one of" a group."""
+    return (link.level == "required", link.alternative_group is None)
+
+
 class Command(BaseCommand):
     help = "Merge duplicate skills (alias table + case) in the stored data."
 
@@ -92,10 +98,12 @@ class Command(BaseCommand):
             for target in targets:
                 existing = AdSkill.objects.filter(ad_id=link.ad_id, skill=target).first()
                 if existing is None:
-                    AdSkill.objects.create(ad_id=link.ad_id, skill=target, level=link.level)
-                elif link.level == "required" and existing.level != "required":
-                    existing.level = "required"  # required beats nice-to-have
-                    existing.save(update_fields=["level"])
+                    AdSkill.objects.create(
+                        ad_id=link.ad_id, skill=target, level=link.level, alternative_group=link.alternative_group,
+                    )
+                elif firmness(link) > firmness(existing):
+                    existing.level, existing.alternative_group = link.level, link.alternative_group
+                    existing.save(update_fields=["level", "alternative_group"])
             link.delete()
             moved += 1
         source.delete()

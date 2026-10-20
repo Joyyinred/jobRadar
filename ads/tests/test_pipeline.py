@@ -33,7 +33,9 @@ def test_post_then_get_shows_the_parsed_ad(api, celery_eager):
         "degree_level": "bachelor",
         "occupation_group": "",  # pasted ads have no JobTech group
         "required_skills": ["Python", "Django", "PostgreSQL"],
+        "required_one_of": [],
         "nice_to_have_skills": ["Docker", "AWS"],
+        "nice_to_have_one_of": [],
         "swedish_requirement": "preferred",
     }
     assert Company.objects.filter(name="Mock Company AB").count() == 1

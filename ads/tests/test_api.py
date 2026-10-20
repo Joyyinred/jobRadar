@@ -67,7 +67,7 @@ def test_get_completed_ad_includes_result(api):
     assert body["result"]["title"] == "Dev"
     assert list(body["result"]) == [
         "title", "title_en", "company", "city", "seniority", "employment_type", "degree_level", "occupation_group",
-        "required_skills", "nice_to_have_skills", "swedish_requirement",
+        "required_skills", "required_one_of", "nice_to_have_skills", "nice_to_have_one_of", "swedish_requirement",
     ]  # the order the page's table relies on
 
 

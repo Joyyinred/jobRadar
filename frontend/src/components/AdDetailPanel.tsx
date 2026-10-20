@@ -124,9 +124,9 @@ export function AdDetailPanel({ adId, onChanged, loggedIn }: Props) {
           {loggedIn && <TrackBox adId={adId} onChanged={onChanged} />}
 
           <h3>Required</h3>
-          <SkillChips skills={ad.result.required_skills} kind="required" />
+          <SkillChips skills={ad.result.required_skills} groups={ad.result.required_one_of} kind="required" />
           <h3>Nice to have</h3>
-          <SkillChips skills={ad.result.nice_to_have_skills} kind="nice" />
+          <SkillChips skills={ad.result.nice_to_have_skills} groups={ad.result.nice_to_have_one_of} kind="nice" />
         </>
       )}
 
@@ -137,13 +137,19 @@ export function AdDetailPanel({ adId, onChanged, loggedIn }: Props) {
   )
 }
 
-function SkillChips({ skills, kind }: { skills: string[]; kind: 'required' | 'nice' }) {
-  if (skills.length === 0) return <p className="muted">None listed.</p>
+function SkillChips({ skills, groups, kind }: { skills: string[]; groups: string[][]; kind: 'required' | 'nice' }) {
+  if (skills.length === 0 && groups.length === 0) return <p className="muted">None listed.</p>
   return (
     <div className="chips">
       {skills.map((skill) => (
         <span key={skill} className={`chip chip-${kind}`}>
           {skill}
+        </span>
+      ))}
+      {/* "One of": one chip for the whole group — any one of them is enough. */}
+      {groups.map((group) => (
+        <span key={group.join('|')} className={`chip chip-${kind} chip-group`}>
+          <span className="chip-group-label">one of</span> {group.join(' / ')}
         </span>
       ))}
     </div>

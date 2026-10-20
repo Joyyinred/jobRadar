@@ -80,6 +80,9 @@ export function MarketPanel({ groups }: Props) {
                 <th>Skill</th>
                 <th className="bar-cell">Share of ads</th>
                 <th className="num">Required</th>
+                <th className="num" title="Required, but as one of several alternatives (e.g. Python, Java or Go)">
+                  One of
+                </th>
                 <th className="num">Nice to have</th>
               </tr>
             </thead>
@@ -88,18 +91,18 @@ export function MarketPanel({ groups }: Props) {
                 <tr key={skill.name}>
                   <td>{skill.name}</td>
                   <td className="bar-cell">
-                    {/* Two segments: the required part and the nice-to-have part. */}
+                    {/* Three segments: required on its own, one of several, nice to have
+                        (the bar's own colour). They add up to the whole bar. */}
                     <div className="bar" style={{ width: `${(skill.share / top) * 100}%` }}>
-                      <div
-                        className="bar-required"
-                        style={{ width: `${(skill.required / Math.max(skill.ads, 1)) * 100}%` }}
-                      />
+                      <div className="bar-required" style={{ width: `${(skill.required / Math.max(skill.ads, 1)) * 100}%` }} />
+                      <div className="bar-one-of" style={{ width: `${(skill.one_of / Math.max(skill.ads, 1)) * 100}%` }} />
                     </div>
                     <span className="bar-label">
                       {percent(skill.share)} ({skill.ads})
                     </span>
                   </td>
                   <td className="num">{skill.required}</td>
+                  <td className="num">{skill.one_of}</td>
                   <td className="num">{skill.nice_to_have}</td>
                 </tr>
               ))}

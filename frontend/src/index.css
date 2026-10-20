@@ -9,6 +9,7 @@
   --accent: #3b5bdb;
   --accent-soft: #e7ecff;
   --required: #3b5bdb;
+  --one-of: #748ffc; /* between the two: required, but one of several */
   --nice: #a5b4fc;
   --thesis: #0c8599;
   --thesis-soft: #e3fafc;
@@ -36,6 +37,7 @@
     --accent: #7c95ff;
     --accent-soft: #1f2a4a;
     --required: #7c95ff;
+    --one-of: #5b70c4;
     --nice: #3b4a7a;
     --thesis: #3bc9db;
     --thesis-soft: #10343a;

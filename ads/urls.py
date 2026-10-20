@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views
+from . import auth, views
 
 # Mounted under "api/" in config/urls.py, so "ads/" here is /api/ads/.
 urlpatterns = [
@@ -16,4 +16,8 @@ urlpatterns = [
     # Market statistics over the collected ads.
     path("market/skills/", views.market_skills),  # GET ?seniority=junior&level=required
     path("occupation-groups/", views.list_occupation_groups),  # GET: groups for the filters
+    # Logging in (sessions): see auth.py.
+    path("auth/me/", auth.me),          # GET: who's logged in (+ the csrftoken cookie)
+    path("auth/login/", auth.login),    # POST {"username", "password"}
+    path("auth/logout/", auth.logout),  # POST
 ]

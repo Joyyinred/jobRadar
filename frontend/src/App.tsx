@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
-import { getOccupationGroups, type OccupationGroup } from './api'
+import { getMe, getOccupationGroups, logOut, type OccupationGroup, type User } from './api'
 import { AdDetailPanel } from './components/AdDetailPanel'
 import { AdList } from './components/AdList'
 import { AddAdPanel } from './components/AddAdPanel'
+import { LoginPanel } from './components/LoginPanel'
 import { MarketPanel } from './components/MarketPanel'
 import { SearchImportPanel } from './components/SearchImportPanel'
 import './App.css'
 
-type Page = 'ads' | 'add' | 'market'
+type Page = 'ads' | 'add' | 'market' | 'login'
 
 const PAGES: { id: Page; label: string }[] = [
   { id: 'ads', label: 'Ads' },
@@ -24,6 +25,10 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const [groups, setGroups] = useState<OccupationGroup[]>([])
+  // undefined = still asking the server; null = nobody logged in.
+  const [user, setUser] = useState<User | null | undefined>(undefined)
+  // Where to go back to after logging in.
+  const [afterLogin, setAfterLogin] = useState<Page>('ads')
 
   // useCallback: the same function object on every render, so panels that
   // depend on it (e.g. in a useEffect) don't restart for no reason.
@@ -32,6 +37,25 @@ export default function App() {
   useEffect(() => {
     getOccupationGroups().then(setGroups).catch(() => setGroups([]))
   }, [refreshKey])
+
+  // Who's logged in — asked once. The session cookie is HttpOnly, so the page
+  // can't look for itself; this also gets the csrftoken cookie for later POSTs.
+  useEffect(() => {
+    getMe().then(setUser).catch(() => setUser(null))
+  }, [])
+
+  function goToLogin(from: Page) {
+    setAfterLogin(from)
+    setPage('login')
+  }
+
+  async function handleLogOut() {
+    try {
+      await logOut()
+    } finally {
+      setUser(null) // logged out on screen even if the server didn't answer
+    }
+  }
 
   /** After adding an ad: go to the Ads page with it selected, so its parse
    *  progress shows right away. */
@@ -47,12 +71,25 @@ export default function App() {
         <h1>
           Job<span>Radar</span>
         </h1>
-        <nav>
+        <nav className="row">
           {PAGES.map(({ id, label }) => (
             <button key={id} className={page === id ? 'nav active' : 'nav'} onClick={() => setPage(id)}>
               {label}
             </button>
           ))}
+          {user && (
+            <span className="user">
+              {user.username} ·{' '}
+              <button className="link-button" onClick={handleLogOut}>
+                Log out
+              </button>
+            </span>
+          )}
+          {user === null && (
+            <button className={page === 'login' ? 'nav active' : 'nav'} onClick={() => goToLogin(page)}>
+              Log in
+            </button>
+          )}
         </nav>
       </header>
 
@@ -79,7 +116,30 @@ export default function App() {
         </main>
       )}
 
-      {page === 'add' && (
+      {page === 'add' && !user && (
+        <main className="layout single">
+          <section className="card muted">
+            Adding and importing ads uses the LLM, so it needs an account —{' '}
+            <button className="link-button" onClick={() => goToLogin('add')}>
+              log in
+            </button>
+            .
+          </section>
+        </main>
+      )}
+
+      {page === 'login' && (
+        <main className="layout single">
+          <LoginPanel
+            onLoggedIn={(u) => {
+              setUser(u)
+              setPage(afterLogin === 'login' ? 'ads' : afterLogin)
+            }}
+          />
+        </main>
+      )}
+
+      {page === 'add' && user && (
         <main className="layout">
           <div className="column">
             <AddAdPanel onAdded={showAd} />

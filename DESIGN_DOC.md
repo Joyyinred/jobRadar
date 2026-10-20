@@ -80,7 +80,7 @@ wrapper, and looks like one. The project justifies itself only if it gets past M
 ### 3.2 Non-goals
 
 - No scraping of LinkedIn, Indeed or any site whose terms forbid it.
-- No real authentication beyond a single local user (Phase 2).
+- No sign-up or user management: accounts are made with `createsuperuser`. Login itself exists (Django sessions, see `ads/auth.py`): reading is public, writing and anything that calls the LLM needs a login.
 - No salary analysis — most Swedish ads don't state salary.
 - No email/inbox integration.
 - No mobile client. This is a desk tool; see REQUIREMENTS_DOC Assumption 7.
